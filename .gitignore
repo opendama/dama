@@ -78,11 +78,6 @@ temp/
 .tmp-admin-auth.json
 .tmp*.json
 
-# Reference-only samples (not part of the Dama product deploy surface)
-smart-menu-sample-referance-only-frontend/
-python-sample-referance-backend/
-python-sample-referance-only-backend/
-
 # Local agent / chat dumps
 *.md.backup
 cursor_hey_please_we_had_a_converssatio*.md
