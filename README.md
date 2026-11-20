@@ -47,9 +47,9 @@ Dama’s production shape matches the Trim-style single-region cloud stack:
 
 | Piece | Typical host | Hostname |
 | --- | --- | --- |
-| Web | Vercel / Cloudflare Pages | `yourdomain.com`, `www…` |
-| API | Render / Fly / Docker (`apps/api/Dockerfile`) | `api.yourdomain.com` |
-| Admin | Vercel (second project) | `admin.yourdomain.com` |
+| Web | Vercel / Cloudflare Pages | `opendama.com`, `www…` |
+| API | Render / Fly / Docker (`apps/api/Dockerfile`) | `api.opendama.com` |
+| Admin | Vercel (second project) | `admin.opendama.com` |
 | Database + Auth | Supabase | - |
 | Redis | Upstash | - |
 | Media | Cloudinary (or CNAME) | - |
@@ -61,7 +61,7 @@ Dama’s production shape matches the Trim-style single-region cloud stack:
 3. **Redis** - `REDIS_URL` / `DAMA_REDIS_URL` (`rediss://…` for Upstash).
 4. **Env packs** (gitignored) from local `.env`:
    ```powershell
-   .\scripts\prepare-prod-env.ps1 -Domain "yourdomain.com"
+   .\scripts\prepare-prod-env.ps1 -Domain "opendama.com"
    ```
    Or fill by hand: `.env.production.example`, `apps/api/.env.render.example`, `apps/web/.env.vercel.example`, `apps/admin/.env.vercel.example`.
 5. **CORS** - `DAMA_CORS_ORIGINS` = real web + admin HTTPS origins only.

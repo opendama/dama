@@ -15,7 +15,7 @@ Never put console origins into the player web `NEXT_PUBLIC_*` set.
 
 ## Deploy
 
-Host on `admin.yourdomain.com` (or your subdomain) as a **second** Vercel/Pages project with root `apps/admin`. Put Cloudflare Access or SSO in front for production.
+Host on `admin.opendama.com` (or your subdomain) as a **second** Vercel/Pages project with root `apps/admin`. Put Cloudflare Access or SSO in front for production.
 
 - Dockerfile (optional self-host): build from monorepo root  
   `docker build -f apps/admin/Dockerfile -t dama-admin .`
