@@ -1,0 +1,22 @@
+{
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+dama.local {
+	tls /certs/server.crt /certs/server.key {
+		client_auth {
+			mode require_and_verify
+			trusted_ca_cert_file /certs/ca.crt
+		}
+	}
+
+	@api path /api/* /graphql /ws/* /healthz
+	handle @api {
+		reverse_proxy backend-api:8080
+	}
+	handle {
+		reverse_proxy nextjs-web:3000
+	}
+}

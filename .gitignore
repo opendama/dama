@@ -1,0 +1,99 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Env (never commit filled Render/Vercel/prod secrets)
+.env
+.env.local
+.env.*.local
+.env.prod
+.env.production
+.env.render
+.env.vercel
+apps/api/.env.render
+apps/web/.env.vercel
+apps/admin/.env.vercel
+!.env.example
+!.env.production.example
+!**/.env.example
+!**/.env.*.example
+
+# Local avatar uploads (Cloudinary fallback)
+uploads/
+apps/api/uploads/
+
+# Next.js
+.next/
+out/
+apps/web/.next/
+apps/web/out/
+
+# Turbo
+.turbo/
+
+# Build / dist
+dist/
+build/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Go
+apps/api/bin/
+apps/api/vendor/
+*.test
+coverage.out
+
+# Flutter / Dart
+apps/mobile/.dart_tool/
+apps/mobile/.packages
+apps/mobile/build/
+apps/mobile/.flutter-plugins
+apps/mobile/.flutter-plugins-dependencies
+apps/mobile/pubspec.lock
+**/.pub-cache/
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logs / coverage
+*.log
+logs/
+coverage/
+.nyc_output/
+
+# Misc
+*.tsbuildinfo
+.vercel
+.cache/
+tmp/
+temp/
+.tmp-admin-auth.json
+.tmp*.json
+
+# Reference-only samples (not part of the Dama product deploy surface)
+smart-menu-sample-referance-only-frontend/
+python-sample-referance-backend/
+python-sample-referance-only-backend/
+
+# Local agent / chat dumps
+*.md.backup
+cursor_hey_please_we_had_a_converssatio*.md
+
+# Local scratch / capture artifacts (not product source)
+build_admin.txt
+build_web.txt
+lint-out.txt
+flutter_analyze.txt
+e2e_sess.json
+tmp-*.json
+tmp-*.png
+tmp_*.py
+attachments/

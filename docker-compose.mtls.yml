@@ -1,0 +1,10 @@
+# Optional internal mTLS overlay (after running infrastructure/scripts/generate-mtls-certs.sh).
+# Usage:
+#   bash infrastructure/scripts/generate-mtls-certs.sh
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml -f docker-compose.mtls.yml up -d
+
+services:
+  caddy:
+    volumes:
+      - ./infrastructure/certs:/certs:ro
+      - ./infrastructure/caddy/Caddyfile.mtls:/etc/caddy/Caddyfile:ro

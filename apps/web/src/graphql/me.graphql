@@ -1,0 +1,29 @@
+query Me {
+  me {
+    id
+    username
+    role
+    rating
+    xp
+    wins
+    losses
+    draws
+    avatarThumbUrl
+    avatarFullUrl
+    region
+    countryCode
+    hostTrustTier
+    hostTrustBadge
+    hostFinishedPaidCups
+    hostCancelledPaidCups
+    hostOpenReports
+    recentMatches {
+      id
+      mode
+      isDraw
+      moveCount
+      isFree
+      finishedAt
+    }
+  }
+}

@@ -1,0 +1,7 @@
+# Local-only API overrides: compose Redis + skip migrate (DB already migrateonly'd).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.local-api.yml up -d backend-api
+services:
+  backend-api:
+    environment:
+      DAMA_SKIP_MIGRATE: "1"
+      DAMA_REDIS_URL: redis://:${REDIS_PASSWORD:-change-me-local-redis}@redis:6379/0

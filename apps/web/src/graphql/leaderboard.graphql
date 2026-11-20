@@ -1,0 +1,20 @@
+query Leaderboard($limit: Int) {
+  leaderboard(limit: $limit) {
+    id
+    username
+    rating
+    xp
+    wins
+    losses
+    draws
+    avatarThumbUrl
+    avatarFullUrl
+    region
+    countryCode
+    online
+    regionalRank
+    levelLabel
+    hostTrustTier
+    hostTrustBadge
+  }
+}

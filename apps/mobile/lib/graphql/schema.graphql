@@ -1,0 +1,165 @@
+# dama GraphQL contract (source of truth for client codegen)
+
+type MatchSummary {
+  id: ID!
+  mode: String!
+  isDraw: Boolean!
+  moveCount: Int!
+  isFree: Boolean!
+  finishedAt: String!
+}
+
+type Player {
+  id: ID!
+  username: String!
+  role: String!
+  rating: Int!
+  xp: Int!
+  wins: Int!
+  losses: Int!
+  draws: Int!
+  avatarThumbUrl: String
+  avatarFullUrl: String
+  region: String
+  countryCode: String
+  online: Boolean!
+  regionalRank: Int
+  regionLabel: String
+  levelLabel: String
+  hostTrustTier: String
+  hostTrustBadge: String
+  hostFinishedPaidCups: Int
+  hostCancelledPaidCups: Int
+  hostOpenReports: Int
+  recentMatches: [MatchSummary!]!
+}
+
+type FeatureFlags {
+  vsAiEnabled: Boolean!
+  otpRequired: Boolean!
+  cashRmgEnabled: Boolean!
+  cashPhoneKycRequired: Boolean!
+  cashPhoneOtpRequired: Boolean!
+  cashRmgDisabledCountries: [String!]!
+  hostedEventsEnabled: Boolean!
+  publicEventsEnabled: Boolean!
+  publicEventMatchesRated: Boolean!
+  prizePoolDisplayEnabled: Boolean!
+  prizePoolGuaranteeEnabled: Boolean!
+  kycAutoApprove: Boolean!
+  aiDepths: [Int!]!
+}
+
+type ConsoleFeatureFlags {
+  vsAiEnabled: Boolean!
+  otpRequired: Boolean!
+  cashRmgEnabled: Boolean!
+  cashPhoneKycRequired: Boolean!
+  cashPhoneOtpRequired: Boolean!
+  cashRmgDisabledCountries: [String!]!
+  ethiopiaPaymentMode: String!
+  hostedEventsEnabled: Boolean!
+  publicEventsEnabled: Boolean!
+  publicEventMatchesRated: Boolean!
+  prizePoolDisplayEnabled: Boolean!
+  prizePoolGuaranteeEnabled: Boolean!
+  kycAutoApprove: Boolean!
+  aiDepths: [Int!]!
+}
+
+type Tournament {
+  id: ID!
+  title: String!
+  description: String
+  isFree: Boolean!
+  entryFeeAmount: Float!
+  entryFeeCurrency: String!
+  prizePoolAmount: Float!
+  prizePoolCurrency: String
+  prizeImageUrl: String
+  gallery: [String!]!
+  playersCount: Int!
+  status: String!
+  prizePoolDisplayEnabled: Boolean!
+  maxPlayers: Int
+  """
+  True when null Unlimited or high Arena safety ceiling (DB swiss ceiling).
+  """
+  seatCapUnlimited: Boolean
+  prizePoolNow: Float
+  prizePoolIfFull: Float
+  prizePoolGuaranteeAmount: Float
+  prizePoolFrozen: Boolean!
+  formatId: String
+  arenaDurationMinutes: Int
+  prizePayoutMode: String
+  prizePlacePercents: String
+}
+
+type AdCampaign {
+  id: ID!
+  title: String!
+  status: String!
+  statusLabel: String
+  impressions: Int!
+  clicks: Int!
+  uniqueReach: Int!
+  videoCompletions: Int!
+  creativeUrl: String
+  thumbnailUrl: String
+  gallery: [String!]!
+}
+
+type PublisherDashboard {
+  me: Player
+  campaigns: [AdCampaign!]!
+  totalImpressions: Int!
+  totalClicks: Int!
+  totalUniqueReach: Int!
+  totalVideoCompletions: Int!
+  ctrPercent: Float!
+  cpc: Float!
+  cpcCurrency: String!
+  completionPercent: Float!
+  createFeeSpendSum: Float!
+  createFeeSpendCurrency: String!
+}
+
+type Query {
+  health: String!
+  featureFlags: FeatureFlags!
+  consoleFeatureFlags: ConsoleFeatureFlags!
+  me: Player
+  player(id: ID!): Player
+  tournaments: [Tournament!]!
+  tournament(id: ID!): Tournament
+  leaderboard(limit: Int): [Player!]!
+  myCampaigns: [AdCampaign!]!
+  publisherDashboard: PublisherDashboard!
+}
+
+type Mutation {
+  createTournament(
+    title: String!
+    description: String
+    isFree: Boolean
+    entryFeeAmount: Float
+    entryFeeCurrency: String
+    prizePoolAmount: Float
+    prizePoolCurrency: String
+    prizePoolDisplayEnabled: Boolean
+    maxPlayers: Int
+    formatId: String
+    arenaDurationMinutes: Int
+    prizePayoutMode: String
+    prizePlacePercents: String
+  ): Tournament!
+  setTournamentStatus(id: ID!, status: String!): Tournament!
+  setFeatureFlag(
+    key: String!
+    enabled: Boolean!
+    mode: String
+    depths: [Int!]
+    disabledCountries: [String!]
+  ): ConsoleFeatureFlags!
+}

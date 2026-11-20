@@ -1,0 +1,16 @@
+query Me {
+  me {
+    id
+    username
+    role
+    rating
+    xp
+    wins
+    losses
+    draws
+    avatarThumbUrl
+    avatarFullUrl
+    region
+    countryCode
+  }
+}

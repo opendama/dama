@@ -1,0 +1,30 @@
+mutation SetFeatureFlag(
+  $key: String!
+  $enabled: Boolean!
+  $mode: String
+  $depths: [Int!]
+  $disabledCountries: [String!]
+) {
+  setFeatureFlag(
+    key: $key
+    enabled: $enabled
+    mode: $mode
+    depths: $depths
+    disabledCountries: $disabledCountries
+  ) {
+    vsAiEnabled
+    otpRequired
+    cashRmgEnabled
+    cashPhoneKycRequired
+    cashPhoneOtpRequired
+    cashRmgDisabledCountries
+    ethiopiaPaymentMode
+    aiDepths
+    hostedEventsEnabled
+    publicEventsEnabled
+    publicEventMatchesRated
+    prizePoolDisplayEnabled
+    prizePoolGuaranteeEnabled
+    kycAutoApprove
+  }
+}

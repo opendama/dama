@@ -1,0 +1,22 @@
+query Tournaments {
+  tournaments {
+    id
+    title
+    description
+    isFree
+    entryFeeAmount
+    entryFeeCurrency
+    prizePoolAmount
+    prizePoolCurrency
+    prizeImageUrl
+    gallery
+    status
+    prizePoolDisplayEnabled
+    maxPlayers
+    seatCapUnlimited
+    prizePoolNow
+    prizePoolIfFull
+    prizePoolGuaranteeAmount
+    prizePoolFrozen
+  }
+}

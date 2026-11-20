@@ -1,0 +1,18 @@
+query ConsoleFeatureFlags {
+  consoleFeatureFlags {
+    vsAiEnabled
+    otpRequired
+    cashRmgEnabled
+    cashPhoneKycRequired
+    cashPhoneOtpRequired
+    cashRmgDisabledCountries
+    ethiopiaPaymentMode
+    aiDepths
+    hostedEventsEnabled
+    publicEventsEnabled
+    publicEventMatchesRated
+    prizePoolDisplayEnabled
+    prizePoolGuaranteeEnabled
+    kycAutoApprove
+  }
+}

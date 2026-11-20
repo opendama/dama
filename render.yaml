@@ -1,0 +1,82 @@
+# Render Blueprint for Dama API (Trim-shaped: Docker API + managed Supabase/Upstash).
+# Dashboard: New → Blueprint → connect this repo → apply.
+# After first deploy, set custom domain api.yourdomain.com and re-run:
+#   .\scripts\prepare-prod-env.ps1 -Domain "yourdomain.com"
+# then paste updated env into the service.
+#
+# Web + Admin stay on Vercel (separate projects). Do not put NEXT_PUBLIC_* here.
+
+services:
+  - type: web
+    name: dama-api
+    runtime: docker
+    plan: starter
+    region: oregon
+    rootDir: apps/api
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /readyz
+    autoDeploy: true
+    envVars:
+      - key: DAMA_API_HOST
+        value: 0.0.0.0
+      # Render injects PORT; our server also reads PORT / DAMA_API_PORT.
+      - key: DAMA_READYZ_TIMEOUT_SEC
+        value: "5"
+      - key: DAMA_RATE_LIMIT_PER_MINUTE
+        value: "120"
+      - key: DAMA_ALLOW_LOCAL_MEDIA
+        value: "false"
+      - key: CHAPA_TEST_MODE
+        value: "false"
+      - key: PADDLE_ENV
+        value: live
+      # Secrets / URLs — set in dashboard (sync: false) from apps/api/.env.render
+      - key: DATABASE_URL
+        sync: false
+      - key: DAMA_DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: DAMA_REDIS_URL
+        sync: false
+      - key: DAMA_JWT_SECRET
+        sync: false
+      - key: DAMA_SECRETS_KEY
+        sync: false
+      - key: DAMA_PUBLIC_API_BASE
+        sync: false
+      - key: DAMA_CORS_ORIGINS
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      - key: DAMA_MEDIA_PUBLIC_BASE
+        sync: false
+      - key: CHAPA_SECRET_KEY
+        sync: false
+      - key: CHAPA_PUBLIC_KEY
+        sync: false
+      - key: CHAPA_WEBHOOK_SECRET
+        sync: false
+      - key: CHAPA_BASE_URL
+        sync: false
+      - key: CHAPA_WEBHOOK_URL
+        sync: false
+      - key: PADDLE_API_KEY
+        sync: false
+      - key: PADDLE_WEBHOOK_SECRET
+        sync: false
+      - key: PADDLE_CLIENT_TOKEN
+        sync: false
+      - key: PADDLE_WEBHOOK_URL
+        sync: false

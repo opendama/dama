@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="dama">
+  <!-- Transparent white mark (no disc) for dark surfaces. -->
+  <g fill="#FFFFFF">
+    <path d="M34 48 L44 70 L64 40 L84 70 L94 48 L90 78 L38 78 Z"/>
+    <ellipse cx="64" cy="92" rx="28" ry="12"/>
+    <ellipse cx="64" cy="84" rx="22" ry="10"/>
+    <circle cx="64" cy="58" r="22"/>
+    <circle cx="64" cy="58" r="9"/>
+  </g>
+</svg>

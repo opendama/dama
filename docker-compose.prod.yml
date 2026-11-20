@@ -1,0 +1,99 @@
+# Production-shaped compose for Dama API (single region).
+# Prefer managed Postgres (Supabase) + managed Redis (Upstash) in real prod.
+# This file is for self-host / staging HA-shaped local ops, not multi-region by itself.
+#
+# Usage:
+#   cp .env.example .env.prod   # fill real secrets (never commit)
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+# With optional local Postgres/Redis sidecars:
+#   docker compose -f docker-compose.prod.yml --profile local-data --env-file .env.prod up -d --build
+# Windows Hyper-V often blocks host 8080:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.port.override.yml --env-file .env.prod up -d --build
+
+services:
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    image: dama-api:${DAMA_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${DAMA_API_PUBLISH_PORT:-8080}:8080"
+    env_file:
+      - ${DAMA_ENV_FILE:-.env}
+    environment:
+      DAMA_API_HOST: 0.0.0.0
+      DAMA_API_PORT: "8080"
+      # Prefer external DATABASE_URL / REDIS_URL from env_file (Supabase + Upstash).
+      # Fallback DNS names below only apply with --profile local-data.
+      DATABASE_URL: ${DATABASE_URL:-${DAMA_DATABASE_URL:-postgres://dama:${DAMA_POSTGRES_PASSWORD:-change-me-prod-db}@postgres:5432/${DAMA_POSTGRES_DB:-dama}?sslmode=disable}}
+      DAMA_DATABASE_URL: ${DAMA_DATABASE_URL:-${DATABASE_URL:-postgres://dama:${DAMA_POSTGRES_PASSWORD:-change-me-prod-db}@postgres:5432/${DAMA_POSTGRES_DB:-dama}?sslmode=disable}}
+      REDIS_URL: ${REDIS_URL:-${DAMA_REDIS_URL:-redis://:${REDIS_PASSWORD:-change-me-prod-redis}@redis:6379/0}}
+      DAMA_REDIS_URL: ${DAMA_REDIS_URL:-${REDIS_URL:-redis://:${REDIS_PASSWORD:-change-me-prod-redis}@redis:6379/0}}
+      DAMA_JWT_SECRET: ${DAMA_JWT_SECRET:?set DAMA_JWT_SECRET}
+      DAMA_SECRETS_KEY: ${DAMA_SECRETS_KEY:?set DAMA_SECRETS_KEY}
+      DAMA_CORS_ORIGINS: ${DAMA_CORS_ORIGINS:?set DAMA_CORS_ORIGINS}
+      SUPABASE_URL: ${SUPABASE_URL:?set SUPABASE_URL}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:?set SUPABASE_JWT_SECRET}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      DAMA_PUBLIC_API_BASE: ${DAMA_PUBLIC_API_BASE:?set DAMA_PUBLIC_API_BASE}
+      DAMA_SKIP_MIGRATE: ${DAMA_SKIP_MIGRATE:-}
+      DAMA_READYZ_TIMEOUT_SEC: ${DAMA_READYZ_TIMEOUT_SEC:-5}
+      # Never enable local-only escapes in production.
+      DAMA_ALLOW_MEMORY: ""
+      DAMA_ALLOW_DEV_SECRETS: ""
+      DAMA_ALLOW_E2E_AUTH: ""
+      DAMA_ALLOW_PAYMENT_STUB: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+      redis:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "/app/server", "-readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  # Optional local Postgres when not using Supabase. Start with --profile local-data.
+  postgres:
+    profiles: ["local-data"]
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DAMA_POSTGRES_USER:-dama}
+      POSTGRES_PASSWORD: ${DAMA_POSTGRES_PASSWORD:-change-me-prod-db}
+      POSTGRES_DB: ${DAMA_POSTGRES_DB:-dama}
+    volumes:
+      - dama_pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DAMA_POSTGRES_USER:-dama} -d ${DAMA_POSTGRES_DB:-dama}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    profiles: ["local-data"]
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-change-me-prod-redis}"]
+    volumes:
+      - dama_redisdata_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change-me-prod-redis}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  dama_pgdata_prod:
+  dama_redisdata_prod:

@@ -1,0 +1,159 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: dama_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DAMA_POSTGRES_USER:-dama}
+      POSTGRES_PASSWORD: ${DAMA_POSTGRES_PASSWORD:-change-me-local-db}
+      POSTGRES_DB: ${DAMA_POSTGRES_DB:-dama}
+    ports:
+      # Host 5434 avoids clash with other local Postgres on 5432.
+      - "5434:5432"
+    volumes:
+      - dama_postgres_data:/var/lib/postgresql/data
+      - ./apps/api/migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DAMA_POSTGRES_USER:-dama} -d ${DAMA_POSTGRES_DB:-dama}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: dama_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-change-me-local-redis}
+    ports:
+      # Host 7379 when the container default host port is unavailable.
+      - "7379:6379"
+    volumes:
+      - dama_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change-me-local-redis}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  pgbouncer:
+    image: edoburu/pgbouncer:1.22.1-p0
+    container_name: dama_pgbouncer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${DAMA_POSTGRES_USER:-dama}:${DAMA_POSTGRES_PASSWORD:-change-me-local-db}@postgres:5432/${DAMA_POSTGRES_DB:-dama}
+      # Plain password in userlist so PgBouncer can complete SCRAM with Postgres 16.
+      AUTH_TYPE: plain
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: 200
+      DEFAULT_POOL_SIZE: 20
+    ports:
+      # Host 7432 when the container default host port is unavailable.
+      - "7432:5432"
+
+  backend-api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: dama_backend_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+    environment:
+      DAMA_API_HOST: 0.0.0.0
+      DAMA_API_PORT: "8080"
+      DAMA_DATABASE_URL: postgres://${DAMA_POSTGRES_USER:-dama}:${DAMA_POSTGRES_PASSWORD:-change-me-local-db}@pgbouncer:5432/${DAMA_POSTGRES_DB:-dama}?sslmode=disable
+      # Prefer Upstash / host DAMA_REDIS_URL from .env; fall back to compose redis service.
+      DAMA_REDIS_URL: ${DAMA_REDIS_URL:-redis://:${REDIS_PASSWORD:-change-me-local-redis}@redis:6379/0}
+      # Required - no weak compose defaults for signing/encryption keys.
+      DAMA_JWT_SECRET: ${DAMA_JWT_SECRET:?set DAMA_JWT_SECRET}
+      DAMA_SECRETS_KEY: ${DAMA_SECRETS_KEY:?set DAMA_SECRETS_KEY}
+      # Set explicitly (include console origin only where needed). Do not bake console ports into defaults.
+      # Include Hyper-V-safe Next ports (3200 web / 3201 admin) used when 3000 is excluded.
+      DAMA_CORS_ORIGINS: ${DAMA_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:3200,http://127.0.0.1:3200,http://localhost:3201,http://127.0.0.1:3201}
+      # Google OAuth exchange (POST /auth/oauth/supabase) - required; without these the
+      # handler returns immediately and the web app lands on oauth_exchange_failed.
+      SUPABASE_URL: ${SUPABASE_URL:?set SUPABASE_URL}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:?set SUPABASE_JWT_SECRET}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      # Media (Cloudinary CDN). Local fallback when unset: DAMA_ALLOW_LOCAL_MEDIA=true.
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+      DAMA_MEDIA_PUBLIC_BASE: ${DAMA_MEDIA_PUBLIC_BASE:-}
+      DAMA_UPLOAD_DIR: ${DAMA_UPLOAD_DIR:-/app/uploads}
+      DAMA_ALLOW_LOCAL_MEDIA: ${DAMA_ALLOW_LOCAL_MEDIA:-false}
+      DAMA_PUBLIC_API_BASE: ${DAMA_PUBLIC_API_BASE:-http://localhost:8080}
+      # Local smoke only - never set in production.
+      DAMA_ALLOW_E2E_AUTH: ${DAMA_ALLOW_E2E_AUTH:-}
+      # Set 1 to skip re-applying all *.sql on boot (use after migrations already applied).
+      DAMA_SKIP_MIGRATE: ${DAMA_SKIP_MIGRATE:-}
+    ports:
+      # Host port overridable - Windows Hyper-V often reserves 8080 (use e.g. 18080).
+      - "${DAMA_API_PUBLISH_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "/app/server", "-readyz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  nextjs-web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+    container_name: dama_nextjs_web
+    restart: unless-stopped
+    depends_on:
+      - backend-api
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/graphql}
+      NEXT_PUBLIC_REST_URL: ${NEXT_PUBLIC_REST_URL:-http://localhost:8080/api/v1}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8080/ws}
+    ports:
+      - "3000:3000"
+
+  nextjs-console:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/console.Dockerfile
+    container_name: dama_nextjs_console
+    restart: unless-stopped
+    depends_on:
+      - backend-api
+    environment:
+      PORT: ${DAMA_CONSOLE_PORT:-3001}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8080/graphql}
+      NEXT_PUBLIC_REST_URL: ${NEXT_PUBLIC_REST_URL:-http://localhost:8080/api/v1}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8080/ws}
+    ports:
+      - "${DAMA_CONSOLE_PORT:-3001}:${DAMA_CONSOLE_PORT:-3001}"
+
+  # Optional local DB UI. Start with: docker compose up -d pgadmin
+  pgadmin:
+    image: dpage/pgadmin4:8
+    container_name: dama_pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-change-me-pgadmin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    volumes:
+      - dama_pgadmin_data:/var/lib/pgadmin
+
+volumes:
+  dama_postgres_data:
+  dama_redis_data:
+  dama_pgadmin_data:

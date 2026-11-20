@@ -1,0 +1,6 @@
+mutation SetTournamentStatus($id: ID!, $status: String!) {
+  setTournamentStatus(id: $id, status: $status) {
+    id
+    status
+  }
+}

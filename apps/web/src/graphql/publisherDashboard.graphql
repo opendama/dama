@@ -1,0 +1,29 @@
+query PublisherDashboard {
+  publisherDashboard {
+    me {
+      id
+      username
+      rating
+      countryCode
+    }
+    campaigns {
+      id
+      title
+      status
+      statusLabel
+      impressions
+      clicks
+      creativeUrl
+    }
+    totalImpressions
+    totalClicks
+    totalUniqueReach
+    totalVideoCompletions
+    ctrPercent
+    cpc
+    cpcCurrency
+    completionPercent
+    createFeeSpendSum
+    createFeeSpendCurrency
+  }
+}

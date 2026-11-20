@@ -1,0 +1,90 @@
+name: dama-ci
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+      - name: GraphQL schema present
+        run: test -f ../api/graphql/schema.graphql
+
+  schema-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify GraphQL schema contract fields
+        run: |
+          grep -q "regionalRank" apps/api/graphql/schema.graphql
+          grep -q "myCampaigns" apps/api/graphql/schema.graphql
+          grep -q "type AdCampaign" apps/api/graphql/schema.graphql
+          grep -q "recentMatches" apps/api/graphql/schema.graphql
+          grep -q "type MatchSummary" apps/api/graphql/schema.graphql
+          grep -q "consoleFeatureFlags" apps/api/graphql/schema.graphql
+          grep -q "isFree" apps/api/graphql/schema.graphql
+          grep -q "aiDepths" apps/api/graphql/schema.graphql
+          grep -q "prizePoolAmount" apps/api/graphql/schema.graphql
+          grep -q "uniqueReach" apps/api/graphql/schema.graphql
+          grep -q "totalUniqueReach" apps/api/graphql/schema.graphql
+          grep -q "videoCompletions" apps/api/graphql/schema.graphql
+      - name: Mobile schema mirror must match API schema
+        run: cmp -s apps/api/graphql/schema.graphql apps/mobile/lib/graphql/schema.graphql
+
+  admin:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/admin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - name: Install
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+      - name: GraphQL codegen
+        run: pnpm codegen
+      - name: GraphQL schema present
+        run: test -f ../api/graphql/schema.graphql
+

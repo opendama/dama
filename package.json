@@ -1,0 +1,29 @@
+{
+  "name": "dama",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dama International Draughts tournament platform monorepo",
+  "packageManager": "pnpm@10.34.6",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "biome lint .",
+    "format": "biome format . --write",
+    "check": "biome check .",
+    "dev:web": "pnpm --filter @dama/web dev",
+    "dev:admin": "pnpm --filter @dama/admin dev",
+    "dev:api": "cd apps/api && go run ./cmd/server",
+    "build:web": "pnpm --filter @dama/web build",
+    "build:admin": "pnpm --filter @dama/admin build",
+    "build:api": "cd apps/api && go build -o bin/server ./cmd/server",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "turbo": "^2.5.4",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

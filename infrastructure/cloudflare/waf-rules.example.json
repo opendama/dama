@@ -1,0 +1,25 @@
+{
+  "description": "Example Cloudflare WAF / rate rules for dama edge (Layer 1). Apply in Cloudflare dashboard or Terraform. Replace zone_id and account.",
+  "zone": "example.com",
+  "rules": [
+    {
+      "action": "block",
+      "expression": "(http.request.uri.path contains \"/api/\" and cf.waf.score lt 20)",
+      "description": "Block low WAF score API traffic"
+    },
+    {
+      "action": "challenge",
+      "expression": "(http.request.uri.path eq \"/graphql\" and rate(5m) > 300)",
+      "description": "Challenge abusive GraphQL clients"
+    },
+    {
+      "action": "managed_challenge",
+      "expression": "(http.request.uri.path contains \"/api/v1/auth/\" and rate(1m) > 30)",
+      "description": "Auth endpoint burst protection"
+    }
+  ],
+  "notes": [
+    "App also enforces Redis leaky-bucket rate limits (Layer 2).",
+    "Point DNS A/AAAA to your load balancer; enable HTTPS (TLS 1.3) and proxy status orange-cloud."
+  ]
+}

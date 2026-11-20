@@ -1,0 +1,122 @@
+# Client operations. Types hydrate from schema.graphql (synced from apps/api/graphql).
+
+query Me {
+  me {
+    id
+    username
+    role
+    rating
+    xp
+    wins
+    losses
+    draws
+    avatarThumbUrl
+    avatarFullUrl
+    online
+    region
+    levelLabel
+    hostTrustTier
+    hostTrustBadge
+    hostFinishedPaidCups
+    hostCancelledPaidCups
+    hostOpenReports
+    recentMatches {
+      id
+      mode
+      isDraw
+      moveCount
+      isFree
+      finishedAt
+    }
+  }
+}
+
+query Leaderboard($limit: Int) {
+  leaderboard(limit: $limit) {
+    id
+    username
+    rating
+    xp
+    wins
+    losses
+    online
+    regionalRank
+    regionLabel
+    levelLabel
+    avatarThumbUrl
+  }
+}
+
+query FeatureFlags {
+  featureFlags {
+    vsAiEnabled
+    otpRequired
+    cashRmgEnabled
+    cashPhoneKycRequired
+    cashPhoneOtpRequired
+    cashRmgDisabledCountries
+    hostedEventsEnabled
+    publicEventsEnabled
+    publicEventMatchesRated
+    prizePoolDisplayEnabled
+    prizePoolGuaranteeEnabled
+    kycAutoApprove
+    aiDepths
+  }
+}
+
+query Tournaments {
+  tournaments {
+    id
+    title
+    description
+    isFree
+    entryFeeAmount
+    entryFeeCurrency
+    prizePoolAmount
+    prizePoolCurrency
+    prizeImageUrl
+    gallery
+    playersCount
+    status
+    prizePoolDisplayEnabled
+    prizePoolNow
+    prizePoolIfFull
+    prizePoolGuaranteeAmount
+    prizePoolFrozen
+    maxPlayers
+    seatCapUnlimited
+  }
+}
+
+query PublisherDashboard {
+  publisherDashboard {
+    me {
+      id
+      username
+    }
+    campaigns {
+      id
+      title
+      status
+      statusLabel
+      impressions
+      clicks
+      uniqueReach
+      videoCompletions
+      creativeUrl
+      thumbnailUrl
+      gallery
+    }
+    totalImpressions
+    totalClicks
+    totalUniqueReach
+    totalVideoCompletions
+    ctrPercent
+    cpc
+    cpcCurrency
+    completionPercent
+    createFeeSpendSum
+    createFeeSpendCurrency
+  }
+}

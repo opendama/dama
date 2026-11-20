@@ -1,0 +1,51 @@
+mutation CreateTournament(
+  $title: String!
+  $description: String
+  $isFree: Boolean
+  $entryFeeAmount: Float
+  $entryFeeCurrency: String
+  $prizePoolAmount: Float
+  $prizePoolCurrency: String
+  $prizePoolDisplayEnabled: Boolean
+  $maxPlayers: Int
+  $formatId: String
+  $arenaDurationMinutes: Int
+  $prizePayoutMode: String
+  $prizePlacePercents: String
+) {
+  createTournament(
+    title: $title
+    description: $description
+    isFree: $isFree
+    entryFeeAmount: $entryFeeAmount
+    entryFeeCurrency: $entryFeeCurrency
+    prizePoolAmount: $prizePoolAmount
+    prizePoolCurrency: $prizePoolCurrency
+    prizePoolDisplayEnabled: $prizePoolDisplayEnabled
+    maxPlayers: $maxPlayers
+    formatId: $formatId
+    arenaDurationMinutes: $arenaDurationMinutes
+    prizePayoutMode: $prizePayoutMode
+    prizePlacePercents: $prizePlacePercents
+  ) {
+    id
+    title
+    isFree
+    entryFeeAmount
+    entryFeeCurrency
+    prizePoolAmount
+    prizePoolCurrency
+    status
+    prizePoolDisplayEnabled
+    maxPlayers
+    seatCapUnlimited
+    prizePoolNow
+    prizePoolIfFull
+    prizePoolGuaranteeAmount
+    prizePoolFrozen
+    formatId
+    arenaDurationMinutes
+    prizePayoutMode
+    prizePlacePercents
+  }
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="dama">
+  <!-- Transparent white mark (no disc) - HQ vector for dark surfaces / default avatar. -->
+  <g fill="#FFFFFF">
+    <path d="M136 192 L176 280 L256 160 L336 280 L376 192 L360 312 L152 312 Z"/>
+    <circle cx="256" cy="232" r="88"/>
+    <ellipse cx="256" cy="336" rx="88" ry="40"/>
+    <ellipse cx="256" cy="368" rx="112" ry="48"/>
+  </g>
+</svg>

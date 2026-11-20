@@ -1,0 +1,26 @@
+{
+	servers {
+		protocols h1 h2 h3
+	}
+}
+
+# Replace dama.local with your real domain and use automatic HTTPS,
+# or mount local certs for offline TLS 1.3 termination.
+dama.local {
+	encode gzip
+
+	@api path /api/* /graphql /ws/* /healthz
+	handle @api {
+		reverse_proxy backend-api:8080
+	}
+
+	handle {
+		reverse_proxy nextjs-web:3000
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+	}
+}

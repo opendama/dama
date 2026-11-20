@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dama_splash_bg">#A31D38</color>
+    <color name="dama_splash_bg_light">#A31D38</color>
+    <color name="dama_brand">#A31D38</color>
+    <color name="ic_launcher_background">#A31D38</color>
+</resources>

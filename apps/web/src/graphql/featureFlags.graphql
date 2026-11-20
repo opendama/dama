@@ -1,0 +1,17 @@
+query FeatureFlags {
+  featureFlags {
+    vsAiEnabled
+    otpRequired
+    cashRmgEnabled
+    cashPhoneKycRequired
+    cashPhoneOtpRequired
+    cashRmgDisabledCountries
+    hostedEventsEnabled
+    publicEventsEnabled
+    publicEventMatchesRated
+    prizePoolDisplayEnabled
+    prizePoolGuaranteeEnabled
+    kycAutoApprove
+    aiDepths
+  }
+}

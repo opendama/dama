@@ -1,0 +1,26 @@
+export type TournamentBracketMatch = {
+  id: string;
+  tournament_id: string;
+  phase?: string;
+  group_index?: number;
+  round_index: number;
+  match_index: number;
+  player_a_id?: string | null;
+  player_b_id?: string | null;
+  winner_id?: string | null;
+  player_a_username?: string;
+  player_b_username?: string;
+  winner_username?: string;
+  next_match_id?: string | null;
+  next_slot?: string | null;
+  game_id?: string | null;
+  status: string;
+  status_label?: string;
+  is_bye: boolean;
+  player_a_ready_at?: string | null;
+  player_b_ready_at?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
