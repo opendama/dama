@@ -18,7 +18,9 @@ Single-region production stack, aligned with the Trim cloud pattern: **stateless
 
 ```powershell
 # From repo root - Domain is required (no invent hostnames)
-.\scripts\prepare-prod-env.ps1 -Domain "yourdomain.com"
+.\scripts\prepare-prod-env.ps1 -Domain "opendama.com"
+# Optional: also replace weak change-me JWT / SECRETS_KEY in root .env
+.\scripts\prepare-prod-env.ps1 -Domain "opendama.com" -SyncSecretsToRoot
 ```
 
 Writes gitignored files (never commit):
@@ -26,9 +28,11 @@ Writes gitignored files (never commit):
 | File | Use |
 | --- | --- |
 | `.env.prod` | Compose / generic secrets pack |
-| `apps/api/.env.render` | Paste into Render Environment |
-| `apps/web/.env.vercel` | Paste into Vercel web project |
-| `apps/admin/.env.vercel` | Paste into Vercel admin project |
+| `apps/api/.env.render` | Paste into Render Environment (skip `#` comment lines) |
+| `apps/web/.env.vercel` | Paste into Vercel web project (`apps/web`) |
+| `apps/admin/.env.vercel` | Paste into Vercel admin project (`apps/admin`) |
+
+Pack rules: `rediss://` Redis, Supabase transaction pooler when present, production hosts `opendama.com` / `api` / `admin`, no `DAMA_ALLOW_*` stubs, no `service_role` in Vercel.
 
 Templates (safe to commit): `.env.production.example`, `apps/api/.env.render.example`, `apps/web/.env.vercel.example`, `apps/admin/.env.vercel.example`.
 
@@ -38,8 +42,8 @@ If local `DAMA_JWT_SECRET` / `DAMA_SECRETS_KEY` still contain `change-me`, the s
 
 1. **DNS** - point apex/www, `api`, and `admin` at your hosts (Cloudflare DNS is fine on Free).
 2. **Supabase** - enable Google Auth; redirect URLs for:
-   - `https://yourdomain.com/auth/callback`
-   - `https://admin.yourdomain.com/auth/callback`
+   - `https://opendama.com/auth/callback`
+   - `https://admin.opendama.com/auth/callback`
    - localhost callbacks for dev  
    Set API `SUPABASE_JWT_SECRET` to the Supabase JWT secret. First API boot applies migrations unless `DAMA_SKIP_MIGRATE=1`.
 3. **Redis** - Upstash `rediss://…` (TLS). Avoid plain `redis://` on the public internet.
@@ -89,7 +93,7 @@ Dama must be its **own** git repository (Trim pattern), not only a folder inside
 4. **Environment:** import keys from `apps/api/.env.render`.  
    Do **not** set `DAMA_ALLOW_MEMORY`, `DAMA_ALLOW_DEV_SECRETS`, `DAMA_ALLOW_E2E_AUTH`, `DAMA_ALLOW_PAYMENT_STUB`.  
 5. Deploy → wait until `/readyz` returns `{"status":"ok",…}`.  
-6. Custom domain: `api.yourdomain.com` → TLS.  
+6. Custom domain: `api.opendama.com` → TLS.  
 7. After a green migrate, optionally set `DAMA_SKIP_MIGRATE=1` and run migrate-only jobs via `go run ./cmd/migrateonly` when you ship SQL.
 
 First boot without a custom domain: re-run env prep with the Render hostname, then update CORS + public API base:
@@ -108,7 +112,7 @@ Then paste the refreshed packs into Render/Vercel and redeploy. Swap to your rea
 | Include files outside root | **On** (pnpm workspace) | **On** |
 | Install / build | from `vercel.json` | from `vercel.json` |
 | Env | import `apps/web/.env.vercel` | import `apps/admin/.env.vercel` |
-| Domain | `yourdomain.com` / `www` | `admin.yourdomain.com` |
+| Domain | `opendama.com` / `www` | `admin.opendama.com` |
 
 Never put `SUPABASE_SERVICE_ROLE_KEY`, DB passwords, `DAMA_JWT_SECRET`, or `DAMA_SECRETS_KEY` in any `NEXT_PUBLIC_*` var.
 

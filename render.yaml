@@ -1,7 +1,7 @@
 # Render Blueprint for Dama API (Trim-shaped: Docker API + managed Supabase/Upstash).
 # Dashboard: New → Blueprint → connect this repo → apply.
-# After first deploy, set custom domain api.yourdomain.com and re-run:
-#   .\scripts\prepare-prod-env.ps1 -Domain "yourdomain.com"
+# After first deploy, set custom domain api.opendama.com and re-run:
+#   .\scripts\prepare-prod-env.ps1 -Domain "opendama.com"
 # then paste updated env into the service.
 #
 # Web + Admin stay on Vercel (separate projects). Do not put NEXT_PUBLIC_* here.
@@ -65,6 +65,8 @@ services:
       - key: CHAPA_SECRET_KEY
         sync: false
       - key: CHAPA_PUBLIC_KEY
+        sync: false
+      - key: CHAPA_ENCRYPTION_KEY
         sync: false
       - key: CHAPA_WEBHOOK_SECRET
         sync: false
