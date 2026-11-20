@@ -41,10 +41,16 @@ If local `DAMA_JWT_SECRET` / `DAMA_SECRETS_KEY` still contain `change-me`, the s
 ## Operator checklist
 
 1. **DNS** - point apex/www, `api`, and `admin` at your hosts (Cloudflare DNS is fine on Free).
-2. **Supabase** - enable Google Auth; redirect URLs for:
-   - `https://opendama.com/auth/callback`
-   - `https://admin.opendama.com/auth/callback`
-   - localhost callbacks for dev  
+2. **Supabase** - enable Google Auth. **Authentication → URL Configuration**:
+   - **Site URL:** `https://www.opendama.com` (Vercel 308s apex → www; keep Site URL on the canonical host).
+   - **Redirect URLs** (must allow `?next=` - use `**` wildcards or OAuth falls back to Site URL and lands on the web app):
+     - `https://www.opendama.com/auth/callback**`
+     - `https://opendama.com/auth/callback**`
+     - `https://admin.opendama.com/auth/callback**`
+     - `http://localhost:3000/auth/callback**` (web dev)
+     - `http://localhost:3001/auth/callback**` (admin dev)
+   - Google provider enabled; Google Cloud authorized redirect =
+     `https://<project-ref>.supabase.co/auth/v1/callback`  
    Set API `SUPABASE_JWT_SECRET` to the Supabase JWT secret. First API boot applies migrations unless `DAMA_SKIP_MIGRATE=1`.
 3. **Redis** - Upstash `rediss://…` (TLS). Avoid plain `redis://` on the public internet.
 4. **Env packs** - run `prepare-prod-env.ps1` or fill the `*.example` files by hand.
@@ -65,7 +71,7 @@ Do these yourself. Do not commit secrets (`.env`, `.env.render`, `.env.vercel`, 
    git push -u origin main
    ```
    (Adjust the URL if your repo name/owner differs.)
-3. **Supabase Auth** - add redirect URLs for web + admin `/auth/callback` (and localhost for dev).
+3. **Supabase Auth** - Site URL `https://www.opendama.com`; Redirect URLs must use `**` wildcards (apps send `?next=`). Exact `/auth/callback` alone does **not** match and silently falls back to the web Site URL.
 4. **Render** - Blueprint or Docker service from this repo → paste `apps/api/.env.render` → `/readyz`.
 5. **Vercel web** - root `apps/web` → paste `apps/web/.env.vercel`.
 6. **Vercel admin** - root `apps/admin` → paste `apps/admin/.env.vercel`.
