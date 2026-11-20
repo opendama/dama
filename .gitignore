@@ -92,3 +92,6 @@ tmp-*.json
 tmp-*.png
 tmp_*.py
 attachments/
+
+# Shared Telegram ops bot lives in its own deploy repo/service
+telegram_bot/
