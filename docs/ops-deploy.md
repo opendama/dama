@@ -49,20 +49,27 @@ If local `DAMA_JWT_SECRET` / `DAMA_SECRETS_KEY` still contain `change-me`, the s
 7. **Deploy** - API → web → admin (same git commit when possible).
 8. **Smoke** - `GET /healthz` → `GET /readyz` → Google OAuth on web → console login on admin → wallet / play.
 
+## You-do sequence (browser-first; Trim-shaped)
+
+Do these yourself. Do not commit secrets (`.env`, `.env.render`, `.env.vercel`, `.env.prod`).
+
+1. **GitHub (browser)** - create empty private repo `dama` (no README/license if local already has commits).
+2. **Push local `dama/`**
+   ```powershell
+   cd C:\Users\berek\Downloads\C-Projects\addismender-project\dama
+   git remote add origin https://github.com/back-y/dama.git
+   git push -u origin main
+   ```
+   (Adjust the URL if your repo name/owner differs.)
+3. **Supabase Auth** - add redirect URLs for web + admin `/auth/callback` (and localhost for dev).
+4. **Render** - Blueprint or Docker service from this repo → paste `apps/api/.env.render` → `/readyz`.
+5. **Vercel web** - root `apps/web` → paste `apps/web/.env.vercel`.
+6. **Vercel admin** - root `apps/admin` → paste `apps/admin/.env.vercel`.
+7. **Smoke** - `/healthz` → `/readyz` → Google OAuth → admin login.
+
 ## Git repo (required before cloud attach)
 
-Dama must be its **own** git repository (Trim pattern), not only a folder inside `addismender-project`.
-
-```powershell
-# From dama/ (once)
-git init -b main
-git add -A
-git status   # confirm no .env / .env.render / secrets
-git commit -m "chore: initial dama deploy surface"
-# Create empty GitHub repo "dama", then:
-git remote add origin https://github.com/<you>/dama.git
-git push -u origin main
-```
+Dama must be its **own** git repository (Trim pattern), not only a folder inside `addismender-project`. Local `git init` + commits may already exist; create the empty GitHub repo in the **browser**, then push as in step 2 above.
 
 ## Render (API) - click path
 

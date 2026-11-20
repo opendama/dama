@@ -1,4 +1,4 @@
-# Build gitignored prod env packs from root .env (Trim-style Render/Vercel import files).
+﻿# Build gitignored prod env packs from root .env (Trim-style Render/Vercel import files).
 # Usage (from repo root):
 #   .\scripts\prepare-prod-env.ps1 -Domain "yourdomain.com"
 # Optional: -ApiHost "api.yourdomain.com" -WebHost "yourdomain.com" -AdminHost "admin.yourdomain.com"
@@ -67,8 +67,9 @@ function New-SecretHex([int]$bytes = 32) {
 $m = Get-DotEnvMap ".env"
 
 $db = Get-MapVal $m @("SUPABASE_DB_POOLER_TRANSACTION_URL", "DAMA_DATABASE_URL", "DATABASE_URL", "SUPABASE_DB_DIRECT_URL")
+# Use concatenation - PowerShell treats "$db?…" as a special variable expression.
 if ($db -and $db -notmatch "sslmode=") {
-  if ($db.Contains("?")) { $db = "$db&sslmode=require" } else { $db = "$db?sslmode=require" }
+  if ($db.Contains("?")) { $db = $db + "&sslmode=require" } else { $db = $db + "?sslmode=require" }
 }
 
 $redis = Get-MapVal $m @("REDIS_URL", "DAMA_REDIS_URL")
