@@ -31,7 +31,7 @@ services:
         value: "false"
       - key: PADDLE_ENV
         value: live
-      # Secrets / URLs — set in dashboard (sync: false) from apps/api/.env.render
+      # Secrets / URLs - set in dashboard (sync: false) from apps/api/.env.render
       - key: DATABASE_URL
         sync: false
       - key: DAMA_DATABASE_URL

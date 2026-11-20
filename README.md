@@ -56,17 +56,17 @@ Dama’s production shape matches the Trim-style single-region cloud stack:
 
 ### Operator checklist (summary)
 
-1. **DNS** — apex/www, `api`, and `admin`.
-2. **Supabase** — apply `apps/api/migrations/` in filename order; enable Google Auth; redirect URLs for web, admin, localhost; set API `SUPABASE_JWT_SECRET` to the Supabase JWT secret.
-3. **Redis** — `REDIS_URL` / `DAMA_REDIS_URL` (`rediss://…` for Upstash).
+1. **DNS** - apex/www, `api`, and `admin`.
+2. **Supabase** - apply `apps/api/migrations/` in filename order; enable Google Auth; redirect URLs for web, admin, localhost; set API `SUPABASE_JWT_SECRET` to the Supabase JWT secret.
+3. **Redis** - `REDIS_URL` / `DAMA_REDIS_URL` (`rediss://…` for Upstash).
 4. **Env packs** (gitignored) from local `.env`:
    ```powershell
    .\scripts\prepare-prod-env.ps1 -Domain "yourdomain.com"
    ```
    Or fill by hand: `.env.production.example`, `apps/api/.env.render.example`, `apps/web/.env.vercel.example`, `apps/admin/.env.vercel.example`.
-5. **CORS** — `DAMA_CORS_ORIGINS` = real web + admin HTTPS origins only.
-6. **Deploy** — Render API (`apps/api`) → Vercel web (`apps/web`) → Vercel admin (`apps/admin`).
-7. **Smoke** — `GET /healthz` (liveness) → `GET /readyz` (Postgres+Redis) → OAuth → wallet / play.
+5. **CORS** - `DAMA_CORS_ORIGINS` = real web + admin HTTPS origins only.
+6. **Deploy** - Render API (`apps/api`) → Vercel web (`apps/web`) → Vercel admin (`apps/admin`).
+7. **Smoke** - `GET /healthz` (liveness) → `GET /readyz` (Postgres+Redis) → OAuth → wallet / play.
 
 Compose helpers:
 

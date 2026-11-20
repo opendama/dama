@@ -17,7 +17,7 @@ Single-region production stack, aligned with the Trim cloud pattern: **stateless
 ## One-shot env pack (from local `.env`)
 
 ```powershell
-# From repo root — Domain is required (no invent hostnames)
+# From repo root - Domain is required (no invent hostnames)
 .\scripts\prepare-prod-env.ps1 -Domain "yourdomain.com"
 ```
 
@@ -32,22 +32,22 @@ Writes gitignored files (never commit):
 
 Templates (safe to commit): `.env.production.example`, `apps/api/.env.render.example`, `apps/web/.env.vercel.example`, `apps/admin/.env.vercel.example`.
 
-If local `DAMA_JWT_SECRET` / `DAMA_SECRETS_KEY` still contain `change-me`, the script generates strong values into the prod packs only — copy them back into your secret store and rotate any already-deployed tokens.
+If local `DAMA_JWT_SECRET` / `DAMA_SECRETS_KEY` still contain `change-me`, the script generates strong values into the prod packs only - copy them back into your secret store and rotate any already-deployed tokens.
 
 ## Operator checklist
 
-1. **DNS** — point apex/www, `api`, and `admin` at your hosts (Cloudflare DNS is fine on Free).
-2. **Supabase** — enable Google Auth; redirect URLs for:
+1. **DNS** - point apex/www, `api`, and `admin` at your hosts (Cloudflare DNS is fine on Free).
+2. **Supabase** - enable Google Auth; redirect URLs for:
    - `https://yourdomain.com/auth/callback`
    - `https://admin.yourdomain.com/auth/callback`
    - localhost callbacks for dev  
    Set API `SUPABASE_JWT_SECRET` to the Supabase JWT secret. First API boot applies migrations unless `DAMA_SKIP_MIGRATE=1`.
-3. **Redis** — Upstash `rediss://…` (TLS). Avoid plain `redis://` on the public internet.
-4. **Env packs** — run `prepare-prod-env.ps1` or fill the `*.example` files by hand.
-5. **CORS** — `DAMA_CORS_ORIGINS` = real web + admin HTTPS origins only.
-6. **Payments** — Chapa/Paddle webhook URLs → `https://api…/api/v1/payments/…/webhook`.
-7. **Deploy** — API → web → admin (same git commit when possible).
-8. **Smoke** — `GET /healthz` → `GET /readyz` → Google OAuth on web → console login on admin → wallet / play.
+3. **Redis** - Upstash `rediss://…` (TLS). Avoid plain `redis://` on the public internet.
+4. **Env packs** - run `prepare-prod-env.ps1` or fill the `*.example` files by hand.
+5. **CORS** - `DAMA_CORS_ORIGINS` = real web + admin HTTPS origins only.
+6. **Payments** - Chapa/Paddle webhook URLs → `https://api…/api/v1/payments/…/webhook`.
+7. **Deploy** - API → web → admin (same git commit when possible).
+8. **Smoke** - `GET /healthz` → `GET /readyz` → Google OAuth on web → console login on admin → wallet / play.
 
 ## Git repo (required before cloud attach)
 
@@ -64,15 +64,15 @@ git remote add origin https://github.com/<you>/dama.git
 git push -u origin main
 ```
 
-## Render (API) — click path
+## Render (API) - click path
 
-**Option A — Blueprint (preferred)**  
+**Option A - Blueprint (preferred)**  
 1. Push this repo to GitHub.  
 2. Render → **New** → **Blueprint** → select repo (reads root `render.yaml`).  
 3. Fill every `sync: false` env from `apps/api/.env.render`.  
 4. Deploy → open `https://dama-api.onrender.com/readyz`.
 
-**Option B — Manual Web Service**  
+**Option B - Manual Web Service**  
 1. New **Web Service** → connect the dama repo.  
 2. **Runtime:** Docker  
    - Root directory: `apps/api`  
@@ -93,7 +93,7 @@ First boot without a custom domain: re-run env prep with the Render hostname, th
 
 Then paste the refreshed packs into Render/Vercel and redeploy. Swap to your real domain when DNS is ready.
 
-## Vercel (web + admin) — click path
+## Vercel (web + admin) - click path
 
 | Setting | Web | Admin |
 | --- | --- | --- |
@@ -144,10 +144,10 @@ Two API replicas on one host (demo only):
 docker compose -f docker-compose.multi-region.example.yml --profile demo up -d --build
 ```
 
-Multi-region anycast / read replicas are ops Day-2 — keep payment webhooks on a **single** primary API URL.
+Multi-region anycast / read replicas are ops Day-2 - keep payment webhooks on a **single** primary API URL.
 
 ## Fail-closed production rules
 
 - No `DAMA_ALLOW_MEMORY`, `DAMA_ALLOW_DEV_SECRETS`, `DAMA_ALLOW_E2E_AUTH`, `DAMA_ALLOW_PAYMENT_STUB`
 - No console origins inside player `NEXT_PUBLIC_*`
-- Weak `change-me-*` JWT/secrets keys are rejected for real traffic — rotate before first public users
+- Weak `change-me-*` JWT/secrets keys are rejected for real traffic - rotate before first public users
