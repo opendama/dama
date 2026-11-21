@@ -673,6 +673,9 @@ func (a *PaymentsAPI) AppShellChrome(w http.ResponseWriter, r *http.Request) {
 			"manifest_name", "manifest_short_name", "manifest_description", "manifest_theme_color",
 			"manifest_background_color_light", "manifest_background_color_dark",
 			"twitter_card", "robots_index", "admin_robots", "admin_not_found_home_href",
+			"mobile_android_application_id", "mobile_ios_bundle_id", "mobile_display_name",
+			"mobile_oauth_scheme", "mobile_oauth_host", "mobile_oauth_redirect_url",
+			"seo_locale", "seo_og_type", "seo_robots_allow", "seo_robots_disallow", "seo_sitemap",
 		},
 	)
 }

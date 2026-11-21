@@ -152,9 +152,9 @@ class _InMatchAdOverlayState extends State<InMatchAdOverlay> {
   }
 
   void _schedule(int seconds) {
-    if (seconds < 1) return;
+    final wait = seconds < 1 ? 1 : seconds;
     _checkTimer?.cancel();
-    _checkTimer = Timer(Duration(seconds: seconds), () {
+    _checkTimer = Timer(Duration(seconds: wait), () {
       unawaited(_check());
     });
   }
@@ -191,7 +191,12 @@ class _InMatchAdOverlayState extends State<InMatchAdOverlay> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
-      if (res.statusCode >= 300 || !mounted) return;
+      if (!mounted) return;
+      if (res.statusCode >= 300) {
+        final backoff = _intervalMin != null && _intervalMin! > 0 ? _intervalMin! : 30;
+        _schedule(backoff < 30 ? 30 : backoff);
+        return;
+      }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final interval = (data['interval_seconds'] as num?)?.toInt();
       if (interval != null && interval >= _intervalMin!) {
@@ -264,9 +269,17 @@ class _InMatchAdOverlayState extends State<InMatchAdOverlay> {
         return;
       }
       final wait = (data['next_check_after_seconds'] as num?)?.toInt();
-      if (wait != null && wait > 0) _schedule(wait);
+      if (wait != null && wait > 0) {
+        _schedule(wait);
+      } else if (_nextIntervalSec != null && _nextIntervalSec! > 0) {
+        _schedule(_nextIntervalSec!);
+      } else if (_intervalMin != null && _intervalMin! > 0) {
+        _schedule(_intervalMin!);
+      }
     } catch (_) {
-      // Fail closed.
+      // Fail closed with backoff so eligibility never spins during live play.
+      final backoff = _intervalMin != null && _intervalMin! > 0 ? _intervalMin! : 30;
+      _schedule(backoff < 30 ? 30 : backoff);
     } finally {
       _checking = false;
     }

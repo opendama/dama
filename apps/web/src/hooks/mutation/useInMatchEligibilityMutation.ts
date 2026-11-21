@@ -21,9 +21,12 @@ export function useInMatchEligibilityMutation() {
         "/ads/in-match/eligibility",
         body,
       );
+      // show:false still carries timing bounds used for next_check scheduling.
       if (
         data == null ||
         typeof data.show !== "boolean" ||
+        typeof data.non_skippable_seconds !== "number" ||
+        typeof data.interval_seconds !== "number" ||
         data.non_skippable_seconds < bounds.non_skippable_min ||
         data.interval_seconds < bounds.interval_min
       ) {

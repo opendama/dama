@@ -670,8 +670,8 @@ func (a *AdsAPI) AttachYouTubeUpload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *AdsAPI) Serve(w http.ResponseWriter, r *http.Request) {
-	// Optional device GPS for Nominatim; country/region/city always server-resolved
-	// (ignore client country/region/district spoof - reference pay-geo parity).
+	// Hot path: GeoIP/private-default for country (no Nominatim). Optional client GPS
+	// for coordinate matching only. Ignore client country/region/district spoof.
 	var lat, lng float64
 	if latS := strings.TrimSpace(r.URL.Query().Get("lat")); latS != "" {
 		if v, err := strconv.ParseFloat(latS, 64); err == nil {
@@ -690,8 +690,8 @@ func (a *AdsAPI) Serve(w http.ResponseWriter, r *http.Request) {
 			r.Context(),
 			"",
 			false,
-			lat,
-			lng,
+			0,
+			0,
 			geo.ClientIP(r),
 			privateDefaultFromSettings(a.Settings),
 		)
@@ -699,10 +699,6 @@ func (a *AdsAPI) Serve(w http.ResponseWriter, r *http.Request) {
 			country = strings.ToUpper(strings.TrimSpace(res.CountryCode))
 			region = strings.TrimSpace(res.Region)
 			district = strings.TrimSpace(res.City)
-			if res.Latitude != 0 || res.Longitude != 0 {
-				la, ln := res.Latitude, res.Longitude
-				latPtr, lngPtr = &la, &ln
-			}
 		}
 	}
 	if lat != 0 || lng != 0 {
@@ -1063,7 +1059,9 @@ func (a *AdsAPI) InMatchEligibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Server geo only (ignore body.Country/Region/District spoof).
+	// Hot path: never Nominatim reverse-geocode on eligibility (that was ~3s/call and
+	// starved live /ws/game moves). GeoIP/private-default for country; client GPS only
+	// for coordinate matching. Ignore body.Country/Region/District spoof.
 	var lat, lng float64
 	if body.Lat != nil {
 		lat = *body.Lat
@@ -1078,8 +1076,8 @@ func (a *AdsAPI) InMatchEligibility(w http.ResponseWriter, r *http.Request) {
 			r.Context(),
 			"",
 			false,
-			lat,
-			lng,
+			0,
+			0,
 			geo.ClientIP(r),
 			privateDefaultFromSettings(a.Settings),
 		)
@@ -1087,10 +1085,6 @@ func (a *AdsAPI) InMatchEligibility(w http.ResponseWriter, r *http.Request) {
 			country = strings.ToUpper(strings.TrimSpace(res.CountryCode))
 			region = strings.TrimSpace(res.Region)
 			district = strings.TrimSpace(res.City)
-			if res.Latitude != 0 || res.Longitude != 0 {
-				la, ln := res.Latitude, res.Longitude
-				latPtr, lngPtr = &la, &ln
-			}
 		}
 	}
 	if lat != 0 || lng != 0 {
@@ -1131,10 +1125,45 @@ func (a *AdsAPI) InMatchEligibility(w http.ResponseWriter, r *http.Request) {
 	blockNonSkip = pb.NonSkippableSeconds
 	blockFirst = pb.FirstShowAfterGameSeconds
 	blockInterval = pb.DefaultIntervalSeconds
+	// Floor so clients cannot hammer eligibility faster than playback bounds.
+	minRetry := pb.IntervalMin
+	if minRetry < 5 {
+		minRetry = 5
+	}
 
-	for _, geo := range geoMatched {
-		c, ok := schedIDs[geo.ID]
+	for _, matched := range geoMatched {
+		c, ok := schedIDs[matched.ID]
 		if !ok {
+			continue
+		}
+		nonSkip, firstShow, interval, err := a.Settings.EffectiveAdTiming(&c)
+		if err != nil {
+			writeAdsErr(w, a.Settings, http.StatusServiceUnavailable, "err_playback_unavailable")
+			return
+		}
+		// Timing gates first (no DB) so before_first_show / interval waits stay cheap.
+		if body.GameElapsedSeconds < firstShow {
+			wait := firstShow - body.GameElapsedSeconds
+			if wait < 1 {
+				wait = 1
+			}
+			if blockReason == "no_eligible_campaign" || wait < soonestRetry {
+				soonestRetry = wait
+				blockReason = "before_first_show"
+				blockNonSkip, blockFirst, blockInterval = nonSkip, firstShow, interval
+			}
+			continue
+		}
+		if body.SecondsSinceLastAd != nil && *body.SecondsSinceLastAd < interval {
+			wait := interval - *body.SecondsSinceLastAd
+			if wait < 1 {
+				wait = 1
+			}
+			if blockReason == "no_eligible_campaign" || wait < soonestRetry {
+				soonestRetry = wait
+				blockReason = "interval_not_elapsed"
+				blockNonSkip, blockFirst, blockInterval = nonSkip, firstShow, interval
+			}
 			continue
 		}
 		counts, err := a.Ads.CountImpressionsByPeriod(r.Context(), c.ID, now)
@@ -1145,11 +1174,6 @@ func (a *AdsAPI) InMatchEligibility(w http.ResponseWriter, r *http.Request) {
 		if !c.WithinDailySpendCap(unitCost, counts.Day) {
 			continue
 		}
-		nonSkip, firstShow, interval, err := a.Settings.EffectiveAdTiming(&c)
-		if err != nil {
-			writeAdsErr(w, a.Settings, http.StatusServiceUnavailable, "err_playback_unavailable")
-			return
-		}
 		if !c.WithinPeriodCaps(counts) {
 			wait := c.SecondsUntilPeriodCapReset(counts, now)
 			if wait < 1 {
@@ -1158,24 +1182,6 @@ func (a *AdsAPI) InMatchEligibility(w http.ResponseWriter, r *http.Request) {
 			if blockReason == "no_eligible_campaign" || wait < soonestRetry {
 				soonestRetry = wait
 				blockReason = "period_cap_reached"
-				blockNonSkip, blockFirst, blockInterval = nonSkip, firstShow, interval
-			}
-			continue
-		}
-		if body.GameElapsedSeconds < firstShow {
-			wait := firstShow - body.GameElapsedSeconds
-			if wait < soonestRetry {
-				soonestRetry = wait
-				blockReason = "before_first_show"
-				blockNonSkip, blockFirst, blockInterval = nonSkip, firstShow, interval
-			}
-			continue
-		}
-		if body.SecondsSinceLastAd != nil && *body.SecondsSinceLastAd < interval {
-			wait := interval - *body.SecondsSinceLastAd
-			if wait < soonestRetry {
-				soonestRetry = wait
-				blockReason = "interval_not_elapsed"
 				blockNonSkip, blockFirst, blockInterval = nonSkip, firstShow, interval
 			}
 			continue
@@ -1190,6 +1196,13 @@ func (a *AdsAPI) InMatchEligibility(w http.ResponseWriter, r *http.Request) {
 			"period_counts":            counts,
 		})
 		return
+	}
+
+	if blockReason == "no_eligible_campaign" && soonestRetry < minRetry {
+		soonestRetry = minRetry
+	}
+	if soonestRetry < 1 {
+		soonestRetry = minRetry
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{

@@ -20,6 +20,8 @@ export type AppShellChrome = {
   manifest_background_color_dark?: string;
   twitter_card?: string;
   admin_robots?: string;
+  seo_locale?: string;
+  seo_og_type?: string;
 };
 
 const REQUIRED = [
@@ -43,6 +45,8 @@ const REQUIRED = [
   "twitter_card",
   "admin_robots",
   "brand_mark_alt",
+  "seo_locale",
+  "seo_og_type",
 ] as const;
 
 export function isAppShellChromeReady(

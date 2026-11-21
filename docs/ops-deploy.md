@@ -47,6 +47,7 @@ If local `DAMA_JWT_SECRET` / `DAMA_SECRETS_KEY` still contain `change-me`, the s
      - `https://www.opendama.com/auth/callback**`
      - `https://opendama.com/auth/callback**`
      - `https://admin.opendama.com/auth/callback**`
+     - `com.opendama.mobile://login-callback/**` (Flutter Android/iOS)
      - `http://localhost:3000/auth/callback**` (web dev)
      - `http://localhost:3001/auth/callback**` (admin dev)
    - Google provider enabled; Google Cloud authorized redirect =
@@ -144,6 +145,12 @@ Local full stack (dev) remains `docker compose up` via `docker-compose.yml`.
 ## Flutter
 
 Ship via Play Store / App Store with the same public API/WS/Supabase URLs as web. No Docker image for mobile.
+
+- Package id / OAuth scheme: `com.opendama.mobile` (DB `app_shell_chrome`, mig **540**; native manifests must match).
+- Android AAB: `apps/mobile/scripts/build-prod-android.ps1` + `android/key.properties`.
+- iOS IPA (macOS): `apps/mobile/scripts/build-prod-ios.sh` + `ios/Flutter/Signing.xcconfig`.
+- Supabase Redirect URLs must include `com.opendama.mobile://login-callback/**`.
+- Details: `apps/mobile/STORE_PACKAGING.md`.
 
 ## Day-2 HA (supported sketch)
 

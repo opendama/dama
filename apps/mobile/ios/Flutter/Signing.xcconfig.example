@@ -1,0 +1,4 @@
+// Copy to Signing.xcconfig (gitignored) and set your Apple Developer Team ID.
+// Included optionally from Debug.xcconfig / Release.xcconfig.
+DEVELOPMENT_TEAM=
+CODE_SIGN_STYLE=Automatic

@@ -61,7 +61,18 @@ export function InMatchAdOverlay({ active, gameStartedAtMs }: Props) {
   const countdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const openRef = useRef(false);
   const checkingRef = useRef(false);
-  const checkRef = useRef<() => void>(() => {});
+  const activeRef = useRef(active);
+  const gameStartedAtMsRef = useRef(gameStartedAtMs);
+  const geoRef = useRef(geoQuery.data);
+  const playbackRef = useRef(playbackQuery.data);
+  const eligibilityMutateRef = useRef(eligibility.mutateAsync);
+  const impressionMutateRef = useRef(impression.mutate);
+  activeRef.current = active;
+  gameStartedAtMsRef.current = gameStartedAtMs;
+  geoRef.current = geoQuery.data;
+  playbackRef.current = playbackQuery.data;
+  eligibilityMutateRef.current = eligibility.mutateAsync;
+  impressionMutateRef.current = impression.mutate;
 
   const clearCheck = useCallback(() => {
     if (checkTimer.current) {
@@ -77,43 +88,34 @@ export function InMatchAdOverlay({ active, gameStartedAtMs }: Props) {
     }
   }, []);
 
+  const runCheckRef = useRef<() => Promise<void>>(async () => {});
+
   const scheduleAfter = useCallback(
     (seconds: number) => {
-      if (seconds < 1) return;
+      const wait = Math.max(1, Math.floor(seconds));
       clearCheck();
-      checkTimer.current = setTimeout(() => checkRef.current(), seconds * 1000);
+      checkTimer.current = setTimeout(() => {
+        void runCheckRef.current();
+      }, wait * 1000);
     },
     [clearCheck],
   );
 
-  const closeOverlay = useCallback(() => {
-    clearCountdown();
-    openRef.current = false;
-    setOpen(false);
-    setCampaign(null);
-    setNonSkippable(null);
-    setRemaining(null);
-    const interval = nextIntervalSec.current;
-    if (interval != null && interval > 0 && active && gameStartedAtMs != null) {
-      scheduleAfter(interval);
+  runCheckRef.current = async () => {
+    if (!activeRef.current || gameStartedAtMsRef.current == null || openRef.current || checkingRef.current) {
+      return;
     }
-  }, [active, gameStartedAtMs, scheduleAfter, clearCountdown]);
-
-  const checkEligibility = useCallback(async () => {
-    if (!active || gameStartedAtMs == null || openRef.current || checkingRef.current) return;
-    if (!playbackQuery.data?.player_chrome) return;
-    const geo = geoQuery.data;
-    if (!geo?.country) return;
+    const pb = playbackRef.current;
+    const geo = geoRef.current;
+    if (!pb?.player_chrome || !geo?.country) return;
     checkingRef.current = true;
     try {
-      const elapsed = Math.floor((Date.now() - gameStartedAtMs) / 1000);
+      const elapsed = Math.floor((Date.now() - gameStartedAtMsRef.current) / 1000);
       const sinceLast =
         lastShownAtMs.current == null
           ? null
           : Math.floor((Date.now() - lastShownAtMs.current) / 1000);
-      const pb = playbackQuery.data;
-      if (!pb?.player_chrome) return;
-      const res = await eligibility.mutateAsync({
+      const res = await eligibilityMutateRef.current({
         body: {
           game_elapsed_seconds: elapsed,
           seconds_since_last_ad: sinceLast,
@@ -141,7 +143,6 @@ export function InMatchAdOverlay({ active, gameStartedAtMs }: Props) {
         const slot = resolveViewportSlot(window.innerWidth, bp);
         const picked = pickCampaignCreative(res.campaign, slot);
         if (!picked.imageUrl && !picked.videoId) {
-          // Exact-slot only: no creative for this screen; do not block the match.
           if (res.interval_seconds > 0) scheduleAfter(res.interval_seconds);
           return;
         }
@@ -152,7 +153,7 @@ export function InMatchAdOverlay({ active, gameStartedAtMs }: Props) {
         setRemaining(res.non_skippable_seconds);
         setOpen(true);
         lastShownAtMs.current = Date.now();
-        impression.mutate({
+        impressionMutateRef.current({
           campaignId: res.campaign.id,
           viewerKey: viewerKey(),
           placement: pb.player_chrome.placement_in_match,
@@ -161,24 +162,28 @@ export function InMatchAdOverlay({ active, gameStartedAtMs }: Props) {
       }
       const wait = res.next_check_after_seconds;
       if (wait != null && wait > 0) scheduleAfter(wait);
+      else if (res.interval_seconds > 0) scheduleAfter(res.interval_seconds);
+      else scheduleAfter(Math.max(30, pb.interval_min || 30));
     } catch {
-      // Fail closed.
+      // Fail closed with backoff so we never spin the API during live play.
+      scheduleAfter(Math.max(30, playbackRef.current?.interval_min || 30));
     } finally {
       checkingRef.current = false;
     }
-  }, [
-    active,
-    gameStartedAtMs,
-    geoQuery.data,
-    playbackQuery.data,
-    eligibility,
-    impression,
-    scheduleAfter,
-  ]);
-
-  checkRef.current = () => {
-    void checkEligibility();
   };
+
+  const closeOverlay = useCallback(() => {
+    clearCountdown();
+    openRef.current = false;
+    setOpen(false);
+    setCampaign(null);
+    setNonSkippable(null);
+    setRemaining(null);
+    const interval = nextIntervalSec.current;
+    if (interval != null && interval > 0 && active && gameStartedAtMs != null) {
+      scheduleAfter(interval);
+    }
+  }, [active, gameStartedAtMs, scheduleAfter, clearCountdown]);
 
   useEffect(() => {
     if (!active || gameStartedAtMs == null) {
@@ -192,14 +197,16 @@ export function InMatchAdOverlay({ active, gameStartedAtMs }: Props) {
       lastShownAtMs.current = null;
       return;
     }
-    if (!playbackQuery.data?.player_chrome) return;
-    void checkEligibility();
+    if (!playbackQuery.data?.player_chrome || !geoQuery.data?.country) return;
+    void runCheckRef.current();
     return () => clearCheck();
+    // Intentionally omit mutation identities - they re-render every isPending flip and
+    // were cancelling next_check timers (~4s storm + move timeouts).
   }, [
     active,
     gameStartedAtMs,
     playbackQuery.data?.player_chrome,
-    checkEligibility,
+    geoQuery.data?.country,
     clearCheck,
     clearCountdown,
   ]);

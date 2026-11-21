@@ -1,0 +1,8 @@
+# Copy to android/key.properties (gitignored) for Play upload signing.
+# Generate a keystore once, store offline, never commit.
+
+storePassword=REPLACE_ME
+keyPassword=REPLACE_ME
+keyAlias=upload
+# Path relative to android/ (same folder as this file).
+storeFile=upload-keystore.jks

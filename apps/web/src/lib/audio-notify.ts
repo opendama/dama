@@ -24,8 +24,14 @@ const GAME_START_SRC = "/sounds/game-start.mp3";
 const MESSAGE_SRC = "/sounds/message.wav";
 
 let lastMessageNotifyAt = 0;
+let lastLandNotifyAt = 0;
 
 let ctx: AudioContext | null = null;
+
+/** Reused elements so rapid ply landings do not spawn unbounded Audio nodes. */
+const landPlayers: Partial<Record<PieceLandKind, HTMLAudioElement>> = {};
+let gameStartPlayer: HTMLAudioElement | null = null;
+let messagePlayer: HTMLAudioElement | null = null;
 
 function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -66,15 +72,31 @@ function beep(
   osc.stop(now + dur + 0.02);
 }
 
+function landPlayer(kind: PieceLandKind): HTMLAudioElement {
+  let el = landPlayers[kind];
+  if (!el) {
+    el = new Audio(LAND_SRC[kind]);
+    el.preload = "auto";
+    landPlayers[kind] = el;
+  }
+  return el;
+}
+
 /**
  * Put-down only: move / capture / promote (king) - Chess.com default samples.
  * Priority when calling: promote > capture > move.
  */
 export async function playPieceLandSound(kind: PieceLandKind): Promise<void> {
   if (typeof window === "undefined") return;
+  const now = Date.now();
+  // Drop overlapping land SFX under rapid multi-jump animation (keeps last click clear).
+  if (now - lastLandNotifyAt < 40) return;
+  lastLandNotifyAt = now;
   try {
-    const el = new Audio(LAND_SRC[kind]);
+    await ensureCtx();
+    const el = landPlayer(kind);
     el.volume = kind === "capture" ? 0.9 : kind === "promote" ? 0.85 : 0.8;
+    el.currentTime = 0;
     await el.play();
   } catch {
     // Autoplay / decode failure: soft WebAudio fallback with same roles.
@@ -120,9 +142,14 @@ export async function playMessageDeliveredSound(): Promise<void> {
   if (now - lastMessageNotifyAt < 350) return;
   lastMessageNotifyAt = now;
   try {
-    const el = new Audio(MESSAGE_SRC);
-    el.volume = 0.62;
-    await el.play();
+    await ensureCtx();
+    if (!messagePlayer) {
+      messagePlayer = new Audio(MESSAGE_SRC);
+      messagePlayer.preload = "auto";
+    }
+    messagePlayer.volume = 0.62;
+    messagePlayer.currentTime = 0;
+    await messagePlayer.play();
   } catch {
     // Fail closed: no synthetic beep invent when asset/autoplay unavailable.
   }
@@ -136,9 +163,14 @@ export async function playGameNotify(event: NotifyEvent): Promise<void> {
   if (event === "game_start" || event === "match_found") {
     if (typeof window !== "undefined") {
       try {
-        const el = new Audio(GAME_START_SRC);
-        el.volume = 0.85;
-        await el.play();
+        await ensureCtx();
+        if (!gameStartPlayer) {
+          gameStartPlayer = new Audio(GAME_START_SRC);
+          gameStartPlayer.preload = "auto";
+        }
+        gameStartPlayer.volume = 0.85;
+        gameStartPlayer.currentTime = 0;
+        await gameStartPlayer.play();
         return;
       } catch {
         /* fall through to tone */

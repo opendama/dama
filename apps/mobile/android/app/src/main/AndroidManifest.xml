@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
 
     <application
-        android:label="dama"
+        android:label="Dama"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <!-- Play Console: complete IARC content rating as 17+/Adult skill competitions (ops). -->
@@ -26,6 +26,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Supabase Google OAuth PKCE callback. Scheme/host must match app_shell_chrome mobile_oauth_* (mig 540). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="com.opendama.mobile"
+                    android:host="login-callback"/>
             </intent-filter>
         </activity>
         <meta-data

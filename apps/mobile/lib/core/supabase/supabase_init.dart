@@ -8,7 +8,8 @@ class SupabaseConfig {
   static const String anonKey =
       String.fromEnvironment('DAMA_SUPABASE_ANON_KEY');
 
-  /// Deep link or web callback URL registered in Supabase Auth redirect allowlist.
+  /// Optional local override only. Production OAuth redirect comes from DB
+  /// `app_shell_chrome.mobile_oauth_redirect_url` (mig 540) via AuthCubit.
   static const String oauthRedirectUrl =
       String.fromEnvironment('DAMA_SUPABASE_OAUTH_REDIRECT');
 

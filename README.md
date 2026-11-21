@@ -18,7 +18,7 @@ Host trust / scammer protection (Community cups, mig 522 to 529): phone for paid
 apps/api       Go backend (engine, GraphQL, REST, WSS)
 apps/web       Next.js player + ads portal
 apps/admin     Next.js console (separate deployable app)
-apps/mobile    Flutter player app scaffold
+apps/mobile    Flutter player app (com.opendama.mobile)
 packages/ui    Shared UI primitives
 packages/*     Shared configs
 ```
