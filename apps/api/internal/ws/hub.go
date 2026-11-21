@@ -15,10 +15,11 @@ import (
 )
 
 type clientMeta struct {
-	GameID string
-	UserID string
-	Role   string
-	Room   string // "game" | "matchmaking" | "spectate"
+	GameID  string
+	UserID  string
+	Role    string
+	Room    string // "game" | "matchmaking" | "spectate"
+	writeMu *sync.Mutex // one writer per conn (gorilla/websocket requirement)
 }
 
 // wsPauseAwareError attaches error_key for pause reject sentinels (clients map DB chrome).
@@ -187,7 +188,13 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 	}
 
 	h.mu.Lock()
-	h.clients[conn] = clientMeta{GameID: gameID, UserID: userID, Role: role, Room: room}
+	h.clients[conn] = clientMeta{
+		GameID:  gameID,
+		UserID:  userID,
+		Role:    role,
+		Room:    room,
+		writeMu: &sync.Mutex{},
+	}
 	h.mu.Unlock()
 
 	defer func() {
@@ -212,7 +219,7 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 			welcome["feature_flags"] = flags
 		}
 	}
-	_ = conn.WriteJSON(welcome)
+	_ = h.writeJSON(conn, welcome)
 
 	for {
 		_, msg, err := conn.ReadMessage()
@@ -220,7 +227,7 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 			break
 		}
 		if string(msg) == "ping" {
-			_ = conn.WriteJSON(map[string]any{"type": "pong"})
+			_ = h.writeJSON(conn, map[string]any{"type": "pong"})
 			continue
 		}
 		var payload map[string]any
@@ -236,7 +243,7 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 					authz := h.spectateAuthz
 					h.mu.RUnlock()
 					if authz != nil && !authz(r.Context(), userID, gid) {
-						_ = conn.WriteJSON(map[string]any{"type": "error", "error": "forbidden"})
+						_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "forbidden"})
 						continue
 					}
 				}
@@ -245,11 +252,11 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 				meta.GameID = gid
 				h.clients[conn] = meta
 				h.mu.Unlock()
-				_ = conn.WriteJSON(map[string]any{"type": "joined", "game_id": gid, "room": room})
+				_ = h.writeJSON(conn, map[string]any{"type": "joined", "game_id": gid, "room": room})
 			}
 		case "move":
 			if room != "game" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "moves only on game room"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "moves only on game room"})
 				continue
 			}
 			h.mu.RLock()
@@ -257,21 +264,21 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 			handler := h.onMove
 			h.mu.RUnlock()
 			if handler == nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "move handler unavailable"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "move handler unavailable"})
 				continue
 			}
 			gid, gidErr := resolveJoinedGameID(meta.GameID, payload)
 			if gidErr != "" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": gidErr})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": gidErr})
 				continue
 			}
 			if gid == "" || meta.UserID == "" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "game_id and auth required"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "game_id and auth required"})
 				continue
 			}
 			from, to, ok := parseCoordPair(payload)
 			if !ok {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "from and to required"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "from and to required"})
 				continue
 			}
 			moveCtx := context.Background()
@@ -283,15 +290,18 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 				})
 				moveCtx = context.WithValue(moveCtx, auth.UserIDKey, meta.UserID)
 			}
-			result, err := handler(moveCtx, gid, meta.UserID, from, to)
-			if err != nil {
-				_ = conn.WriteJSON(wsPauseAwareError(err))
-				continue
-			}
-			_ = conn.WriteJSON(map[string]any{"type": "move_ack", "game": result})
+			// Run off the read loop so pings stay alive while ApplyMoveCore (incl. AI) works.
+			go func(ctx context.Context, gameID, uid string, fromC, toC [2]int) {
+				result, err := handler(ctx, gameID, uid, fromC, toC)
+				if err != nil {
+					_ = h.writeJSON(conn, wsPauseAwareError(err))
+					return
+				}
+				_ = h.writeJSON(conn, map[string]any{"type": "move_ack", "game": result})
+			}(moveCtx, gid, meta.UserID, from, to)
 		case "clock_flag":
 			if room != "game" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "clock flag only on game room"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "clock flag only on game room"})
 				continue
 			}
 			h.mu.RLock()
@@ -299,16 +309,16 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 			handler := h.onClockFlag
 			h.mu.RUnlock()
 			if handler == nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "clock flag handler unavailable"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "clock flag handler unavailable"})
 				continue
 			}
 			gid, gidErr := resolveJoinedGameID(meta.GameID, payload)
 			if gidErr != "" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": gidErr})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": gidErr})
 				continue
 			}
 			if gid == "" || meta.UserID == "" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "game_id and auth required"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "game_id and auth required"})
 				continue
 			}
 			flagCtx := context.Background()
@@ -318,15 +328,17 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 				Username: "",
 			})
 			flagCtx = context.WithValue(flagCtx, auth.UserIDKey, meta.UserID)
-			result, err := handler(flagCtx, gid, meta.UserID)
-			if err != nil {
-				_ = conn.WriteJSON(wsPauseAwareError(err))
-				continue
-			}
-			_ = conn.WriteJSON(map[string]any{"type": "move_ack", "game": result})
+			go func(ctx context.Context, gameID, uid string) {
+				result, err := handler(ctx, gameID, uid)
+				if err != nil {
+					_ = h.writeJSON(conn, wsPauseAwareError(err))
+					return
+				}
+				_ = h.writeJSON(conn, map[string]any{"type": "move_ack", "game": result})
+			}(flagCtx, gid, meta.UserID)
 		case "invite_accept", "invite_decline", "invite_cancel":
 			if room != "matchmaking" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "invites only on matchmaking room"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "invites only on matchmaking room"})
 				continue
 			}
 			h.mu.RLock()
@@ -334,12 +346,12 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 			handler := h.onInvite
 			h.mu.RUnlock()
 			if handler == nil || meta.UserID == "" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "invite handler unavailable"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "invite handler unavailable"})
 				continue
 			}
 			inviteID, _ := payload["invite_id"].(string)
 			if inviteID == "" {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": "invite_id required"})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": "invite_id required"})
 				continue
 			}
 			action := "accept"
@@ -356,15 +368,31 @@ func (h *Hub) handle(w http.ResponseWriter, r *http.Request, room string, requir
 			})
 			result, err := handler(inviteCtx, meta.UserID, inviteID, action)
 			if err != nil {
-				_ = conn.WriteJSON(map[string]any{"type": "error", "error": err.Error()})
+				_ = h.writeJSON(conn, map[string]any{"type": "error", "error": err.Error()})
 				continue
 			}
-			_ = conn.WriteJSON(result)
+			_ = h.writeJSON(conn, result)
 		default:
 			// Never echo client payloads (may contain tokens or PII).
-			_ = conn.WriteJSON(map[string]any{"type": "ack"})
+			_ = h.writeJSON(conn, map[string]any{"type": "ack"})
 		}
 	}
+}
+
+// writeJSON serializes writes per connection. Concurrent Broadcast* + move_ack without
+// this corrupted frames and dropped /ws/game sockets (false "Move failed" on live).
+func (h *Hub) writeJSON(conn *websocket.Conn, payload any) error {
+	h.mu.RLock()
+	meta, ok := h.clients[conn]
+	h.mu.RUnlock()
+	if !ok {
+		return websocket.ErrCloseSent
+	}
+	if meta.writeMu != nil {
+		meta.writeMu.Lock()
+		defer meta.writeMu.Unlock()
+	}
+	return conn.WriteJSON(payload)
 }
 
 // resolveJoinedGameID prefers payload game_id but fail-closes when it disagrees with the joined room.
@@ -422,7 +450,7 @@ func (h *Hub) BroadcastGame(gameID string, payload any) {
 
 func (h *Hub) localBroadcastGame(gameID string, payload any) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	targets := make([]*websocket.Conn, 0, len(h.clients))
 	for conn, meta := range h.clients {
 		if meta.Room != "game" && meta.Room != "spectate" {
 			continue
@@ -430,7 +458,11 @@ func (h *Hub) localBroadcastGame(gameID string, payload any) {
 		if gameID != "" && meta.GameID != "" && meta.GameID != gameID {
 			continue
 		}
-		if err := conn.WriteJSON(payload); err != nil {
+		targets = append(targets, conn)
+	}
+	h.mu.RUnlock()
+	for _, conn := range targets {
+		if err := h.writeJSON(conn, payload); err != nil {
 			log.Printf("ws write: %v", err)
 		}
 	}
@@ -443,12 +475,16 @@ func (h *Hub) BroadcastMatchmaking(payload any) {
 
 func (h *Hub) localBroadcastMatchmaking(payload any) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	targets := make([]*websocket.Conn, 0, len(h.clients))
 	for conn, meta := range h.clients {
 		if meta.Room != "matchmaking" {
 			continue
 		}
-		if err := conn.WriteJSON(payload); err != nil {
+		targets = append(targets, conn)
+	}
+	h.mu.RUnlock()
+	for _, conn := range targets {
+		if err := h.writeJSON(conn, payload); err != nil {
 			log.Printf("ws write: %v", err)
 		}
 	}
@@ -460,7 +496,7 @@ func (h *Hub) BroadcastToUsers(userIDs []string, payload any) {
 		want[id] = struct{}{}
 	}
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	targets := make([]*websocket.Conn, 0, len(h.clients))
 	for conn, meta := range h.clients {
 		if meta.UserID == "" {
 			continue
@@ -468,7 +504,11 @@ func (h *Hub) BroadcastToUsers(userIDs []string, payload any) {
 		if _, ok := want[meta.UserID]; !ok {
 			continue
 		}
-		if err := conn.WriteJSON(payload); err != nil {
+		targets = append(targets, conn)
+	}
+	h.mu.RUnlock()
+	for _, conn := range targets {
+		if err := h.writeJSON(conn, payload); err != nil {
 			log.Printf("ws write: %v", err)
 		}
 	}
@@ -489,9 +529,13 @@ func (h *Hub) BroadcastAvatarUpdated(payload any) {
 
 func (h *Hub) localBroadcastFeatureFlags(payload any) {
 	h.mu.RLock()
-	defer h.mu.RUnlock()
+	targets := make([]*websocket.Conn, 0, len(h.clients))
 	for conn := range h.clients {
-		_ = conn.WriteJSON(payload)
+		targets = append(targets, conn)
+	}
+	h.mu.RUnlock()
+	for _, conn := range targets {
+		_ = h.writeJSON(conn, payload)
 	}
 }
 

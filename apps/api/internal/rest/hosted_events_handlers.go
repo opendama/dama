@@ -1694,6 +1694,15 @@ func (a *HostedEventsAPI) ListPublic(w http.ResponseWriter, r *http.Request) {
 			statuses = enums.HostedEventJoinableStatuses
 		}
 	}
+	// Open discovery only: hide paid cash events outside allowlisted GeoIP region.
+	if !mine && lifecycle == "open" {
+		cashOK := viewerCashRegionOK(r, a.Cash, a.Locate, a.Settings)
+		if !forceFreeEntryFilter(&entryFilter.IsFreeEntry, cashOK) {
+			meta := pagination.BuildMeta(params, 0, skipCap, labels)
+			writeJSON(w, http.StatusOK, map[string]any{"events": []any{}, "meta": meta})
+			return
+		}
+	}
 	list, total, err := a.Events.ListPublic(r.Context(), params.Skip, params.Limit, statuses, publicVis, entryFilter)
 	if err != nil {
 		writeEventsOrgErr(w, a.Settings, r.Context(), http.StatusInternalServerError, "err_list_failed")

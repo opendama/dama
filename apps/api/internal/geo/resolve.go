@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,13 +24,24 @@ type Result struct {
 	Longitude   float64 `json:"longitude,omitempty"`
 }
 
+type ipCacheEntry struct {
+	result    Result
+	expiresAt time.Time
+}
+
 type Resolver struct {
 	HTTP *http.Client
+	// Short TTL cache so in-match eligibility / serve do not HTTP-GeoIP on every poll.
+	ipMu    sync.RWMutex
+	ipCache map[string]ipCacheEntry
 }
+
+const geoIPCacheTTL = 10 * time.Minute
 
 func NewResolver() *Resolver {
 	return &Resolver{
-		HTTP: &http.Client{Timeout: 4 * time.Second},
+		HTTP:    &http.Client{Timeout: 4 * time.Second},
+		ipCache: make(map[string]ipCacheEntry),
 	}
 }
 
@@ -122,12 +134,45 @@ func (r *Resolver) Resolve(
 }
 
 func (r *Resolver) lookupIP(ctx context.Context, ip string) (*Result, error) {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return nil, fmt.Errorf("location unavailable")
+	}
+	now := time.Now()
+	r.ipMu.RLock()
+	if ent, ok := r.ipCache[ip]; ok && now.Before(ent.expiresAt) {
+		cp := ent.result
+		r.ipMu.RUnlock()
+		return &cp, nil
+	}
+	r.ipMu.RUnlock()
+
 	// Reference parity: ipinfo.io when DAMA_IPINFO_TOKEN is set; otherwise ipapi.co.
 	token := strings.TrimSpace(os.Getenv("DAMA_IPINFO_TOKEN"))
+	var (
+		res *Result
+		err error
+	)
 	if token != "" {
-		return r.lookupIPInfo(ctx, ip, token)
+		res, err = r.lookupIPInfo(ctx, ip, token)
+	} else {
+		res, err = r.lookupIPAPI(ctx, ip)
 	}
-	return r.lookupIPAPI(ctx, ip)
+	if err != nil || res == nil {
+		return res, err
+	}
+	r.ipMu.Lock()
+	r.ipCache[ip] = ipCacheEntry{result: *res, expiresAt: now.Add(geoIPCacheTTL)}
+	// Bound memory: drop expired entries opportunistically.
+	if len(r.ipCache) > 4096 {
+		for k, e := range r.ipCache {
+			if now.After(e.expiresAt) {
+				delete(r.ipCache, k)
+			}
+		}
+	}
+	r.ipMu.Unlock()
+	return res, nil
 }
 
 func (r *Resolver) lookupIPInfo(ctx context.Context, ip, token string) (*Result, error) {

@@ -38,11 +38,18 @@ class FeatureFlagsWire {
 
   bool get hasPracticeDepths => aiDepths.isNotEmpty;
 
-  /// Fail-closed: paid cash is off unless explicitly enabled and country not killed.
-  bool cashAllowedForCountry(String countryCode) {
+  /// Fail-closed: paid cash requires enable + allowlist + not on disabled list.
+  bool cashAllowedForCountry(
+    String countryCode, {
+    List<String> allowedCountryCodes = const <String>[],
+  }) {
     if (!cashRmgEnabled) return false;
     final cc = countryCode.trim().toUpperCase();
     if (cc.isEmpty) return false;
+    if (allowedCountryCodes.isEmpty) return false;
+    final onAllowlist =
+        allowedCountryCodes.any((c) => c.trim().toUpperCase() == cc);
+    if (!onAllowlist) return false;
     return !cashRmgDisabledCountries.any((c) => c.trim().toUpperCase() == cc);
   }
 

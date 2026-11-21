@@ -116,6 +116,15 @@ func (a *TournamentAPI) List(w http.ResponseWriter, r *http.Request) {
 		Lifecycle:  lifecycle,
 		MineUserID: mineUID,
 	}
+	// Open discovery only: hide paid cash cups outside allowlisted GeoIP region.
+	if !mine && lifecycle == "open" {
+		cashOK := viewerCashRegionOK(r, a.Cash, a.Locate, a.Settings)
+		if !forceFreeEntryFilter(&filter.IsFree, cashOK) {
+			meta := pagination.BuildMeta(params, 0, skipCap, labels)
+			writeJSON(w, http.StatusOK, map[string]any{"tournaments": []any{}, "meta": meta})
+			return
+		}
+	}
 	list, total, err := a.Tournaments.ListPaged(r.Context(), params.Skip, params.Limit, filter)
 	if err != nil {
 		writeTournamentsPlayerErr(w, a.Settings, r.Context(), http.StatusInternalServerError, "err_load_failed")

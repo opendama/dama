@@ -28,10 +28,14 @@ let lastLandNotifyAt = 0;
 
 let ctx: AudioContext | null = null;
 
-/** Reused elements so rapid ply landings do not spawn unbounded Audio nodes. */
-const landPlayers: Partial<Record<PieceLandKind, HTMLAudioElement>> = {};
+/** Small pools so rapid multi-jump lands never restart a mid-play element (dropout/clip). */
+const LAND_POOL = 3;
+const landPools: Partial<Record<PieceLandKind, HTMLAudioElement[]>> = {};
+const landPoolIdx: Partial<Record<PieceLandKind, number>> = {};
 let gameStartPlayer: HTMLAudioElement | null = null;
 let messagePlayer: HTMLAudioElement | null = null;
+
+let visibilityHooked = false;
 
 function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -40,6 +44,15 @@ function getCtx(): AudioContext | null {
       window.AudioContext ||
       (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     ctx = new AC();
+  }
+  // Tab/background suspends AudioContext → land SFX go silent until resumed.
+  if (!visibilityHooked) {
+    visibilityHooked = true;
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && ctx?.state === "suspended") {
+        void ctx.resume();
+      }
+    });
   }
   return ctx;
 }
@@ -72,14 +85,24 @@ function beep(
   osc.stop(now + dur + 0.02);
 }
 
-function landPlayer(kind: PieceLandKind): HTMLAudioElement {
-  let el = landPlayers[kind];
-  if (!el) {
-    el = new Audio(LAND_SRC[kind]);
-    el.preload = "auto";
-    landPlayers[kind] = el;
+function nextLandPlayer(kind: PieceLandKind): HTMLAudioElement {
+  let pool = landPools[kind];
+  if (!pool) {
+    pool = Array.from({ length: LAND_POOL }, () => {
+      const el = new Audio(LAND_SRC[kind]);
+      el.preload = "auto";
+      return el;
+    });
+    landPools[kind] = pool;
+    landPoolIdx[kind] = 0;
   }
-  return el;
+  const idx = landPoolIdx[kind] ?? 0;
+  landPoolIdx[kind] = (idx + 1) % pool.length;
+  const player = pool[idx];
+  if (!player) {
+    throw new Error(`land audio pool empty for ${kind}`);
+  }
+  return player;
 }
 
 /**
@@ -89,14 +112,18 @@ function landPlayer(kind: PieceLandKind): HTMLAudioElement {
 export async function playPieceLandSound(kind: PieceLandKind): Promise<void> {
   if (typeof window === "undefined") return;
   const now = Date.now();
-  // Drop overlapping land SFX under rapid multi-jump animation (keeps last click clear).
-  if (now - lastLandNotifyAt < 40) return;
+  // Soft debounce only - pool handles true overlap so multi-jumps stay audible.
+  if (now - lastLandNotifyAt < 18) return;
   lastLandNotifyAt = now;
   try {
     await ensureCtx();
-    const el = landPlayer(kind);
+    const el = nextLandPlayer(kind);
     el.volume = kind === "capture" ? 0.9 : kind === "promote" ? 0.85 : 0.8;
-    el.currentTime = 0;
+    try {
+      el.currentTime = 0;
+    } catch {
+      /* ignore seek race on some browsers */
+    }
     await el.play();
   } catch {
     // Autoplay / decode failure: soft WebAudio fallback with same roles.

@@ -488,6 +488,23 @@ func (s *CashRmgStore) countryAllowed(code string) bool {
 	return false
 }
 
+// CountryEligibleForCash is the jurisdiction half of EvaluateCash (allowlist + flags).
+// Used to hide paid discovery surfaces outside allowed regions.
+func (s *CashRmgStore) CountryEligibleForCash(ctx context.Context, countryCode string) bool {
+	if s == nil || !s.Ready() || s.flags == nil {
+		return false
+	}
+	flags := s.flags.Get(ctx)
+	if flags.Source != "database" || !flags.CashRmgEnabled {
+		return false
+	}
+	cc := strings.ToUpper(strings.TrimSpace(countryCode))
+	if cc == "" {
+		return false
+	}
+	return s.countryAllowed(cc) && !s.countryDisabledByFlag(cc, flags)
+}
+
 func (s *CashRmgStore) countryDisabledByFlag(code string, flags FeatureFlags) bool {
 	code = strings.ToUpper(strings.TrimSpace(code))
 	if code == "" {

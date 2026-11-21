@@ -505,6 +505,29 @@ func (a *CashRmgAPI) ConsoleDeleteAllowedCountry(w http.ResponseWriter, r *http.
 	a.writeAllowlistPolicy(w)
 }
 
+// viewerCashRegionOK is true when request IP/GPS country may see paid cash discovery.
+func viewerCashRegionOK(r *http.Request, cash *store.CashRmgStore, locate *geo.Resolver, settings *store.SettingsStore) bool {
+	if cash == nil || !cash.Ready() {
+		return false
+	}
+	cc := resolvePayerCountryFromRequest(r, locate, settings, 0, 0)
+	return cash.CountryEligibleForCash(r.Context(), cc)
+}
+
+// forceFreeEntryFilter restricts open browse to free entry when cash jurisdiction blocks paid.
+// Returns false when the client explicitly asked for paid-only and must see an empty page.
+func forceFreeEntryFilter(isFree **bool, cashRegionOK bool) (ok bool) {
+	if cashRegionOK {
+		return true
+	}
+	if *isFree != nil && !*(*isFree) {
+		return false
+	}
+	t := true
+	*isFree = &t
+	return true
+}
+
 // requireCashGate evaluates cash eligibility; writes error response and returns false when blocked.
 func requireCashGate(w http.ResponseWriter, r *http.Request, cash *store.CashRmgStore, users *store.UserStore, settings *store.SettingsStore, countryCode string) bool {
 	if cash == nil || !cash.Ready() || users == nil {
