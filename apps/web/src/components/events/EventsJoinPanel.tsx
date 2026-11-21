@@ -1,6 +1,41 @@
 "use client";
 
 import { SignInLink } from "@/components/auth/SignInLink";
+import { useOptionalSignInModal } from "@/components/auth/SignInModal";
+import { EventCupLobby } from "@/components/events/EventCupLobby";
+import { eventGalleryImages } from "@/components/events/EventMiniCard";
+import { EventStandingsTable } from "@/components/events/EventStandingsTable";
+import { PaymentEventJoinModal } from "@/components/events/PaymentEventJoinModal";
+import { ReportEventDialog } from "@/components/events/ReportEventDialog";
+import { GalleryCarousel } from "@/components/media/GalleryCarousel";
+import { AmountInput } from "@/components/ui/amount-input";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { EventsJoinSkeleton, ShimmerBlock } from "@/components/ui/shimmer-skeletons";
+import { useCheckoutMutation } from "@/hooks/mutation/useCheckoutMutation";
+import {
+  type JoinHostedEventError,
+  useJoinHostedEventMutation,
+} from "@/hooks/mutation/useJoinHostedEventMutation";
+import { useCashEligibilityQuery } from "@/hooks/query/useCashEligibilityQuery";
+import { useCashRmgChromeQuery } from "@/hooks/query/useCashRmgChromeQuery";
+import { useDetectBrowserCountryQuery } from "@/hooks/query/useDetectBrowserCountryQuery";
+import { useEventBracketQuery } from "@/hooks/query/useEventBracketQuery";
+import { useEventByCodeQuery } from "@/hooks/query/useEventByCodeQuery";
+import { useEventEntriesQuery } from "@/hooks/query/useEventEntriesQuery";
+import { useEventQuery } from "@/hooks/query/useEventQuery";
+import { useEventStandingsQuery } from "@/hooks/query/useEventStandingsQuery";
+import { useEventsCatalogQuery } from "@/hooks/query/useEventsCatalogQuery";
+import { useEventsPlayerChromeQuery } from "@/hooks/query/useEventsPlayerChromeQuery";
+import { useJoinedEventsQuery } from "@/hooks/query/useJoinedEventsQuery";
+import { usePaymentModalChromeQuery } from "@/hooks/query/usePaymentModalChromeQuery";
+import { usePaymentRouteQuery } from "@/hooks/query/usePaymentRouteQuery";
+import { useRestFeatureFlagsQuery } from "@/hooks/query/useRestFeatureFlagsQuery";
+import { useWalletQuery } from "@/hooks/query/useWalletQuery";
+import { useDeferredDialogValue } from "@/hooks/use-deferred-dialog-selection";
+import { cashJurisdictionLockMessage, isCashJurisdictionLocked } from "@/lib/cash-jurisdiction";
+import { chromeSeparator } from "@/lib/chrome-separator";
 import {
   softCommunityBracketTitle,
   softCommunityCarouselAria,
@@ -31,42 +66,11 @@ import {
   softTournamentsJoinAction,
   softTournamentsPlayersLabel,
 } from "@/lib/community-player-chrome-soft";
-import { useOptionalSignInModal } from "@/components/auth/SignInModal";
-import { eventGalleryImages } from "@/components/events/EventMiniCard";
-import { EventStandingsTable } from "@/components/events/EventStandingsTable";
-import { EventCupLobby } from "@/components/events/EventCupLobby";
-import { PaymentEventJoinModal } from "@/components/events/PaymentEventJoinModal";
-import { ReportEventDialog } from "@/components/events/ReportEventDialog";
-import { GalleryCarousel } from "@/components/media/GalleryCarousel";
-import { AmountInput } from "@/components/ui/amount-input";
-import { Button } from "@/components/ui/button";
-import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { EventsJoinSkeleton, ShimmerBlock } from "@/components/ui/shimmer-skeletons";
-import { useCheckoutMutation } from "@/hooks/mutation/useCheckoutMutation";
-import {
-  type JoinHostedEventError,
-  useJoinHostedEventMutation,
-} from "@/hooks/mutation/useJoinHostedEventMutation";
-import { useDetectBrowserCountryQuery } from "@/hooks/query/useDetectBrowserCountryQuery";
-import { useEventBracketQuery } from "@/hooks/query/useEventBracketQuery";
-import { useEventByCodeQuery } from "@/hooks/query/useEventByCodeQuery";
-import { useEventEntriesQuery } from "@/hooks/query/useEventEntriesQuery";
-import { useEventQuery } from "@/hooks/query/useEventQuery";
-import { useEventStandingsQuery } from "@/hooks/query/useEventStandingsQuery";
-import { useEventsCatalogQuery } from "@/hooks/query/useEventsCatalogQuery";
-import { useEventsPlayerChromeQuery } from "@/hooks/query/useEventsPlayerChromeQuery";
-import { chromeSeparator } from "@/lib/chrome-separator";
-import { catalogHostedFeatureOff } from "@/lib/events-catalog-gate";
-import { useJoinedEventsQuery } from "@/hooks/query/useJoinedEventsQuery";
-import { usePaymentModalChromeQuery } from "@/hooks/query/usePaymentModalChromeQuery";
-import { usePaymentRouteQuery } from "@/hooks/query/usePaymentRouteQuery";
-import { useWalletQuery } from "@/hooks/query/useWalletQuery";
-import { useDeferredDialogValue } from "@/hooks/use-deferred-dialog-selection";
 import { shouldOpenEventCupLobby } from "@/lib/event-cup-lobby";
 import { eventJoinErrorChrome, isAlreadyJoinedEventError } from "@/lib/event-join-error";
 import { bracketChromeFrom } from "@/lib/events-bracket-chrome";
 import { buildBracketSections } from "@/lib/events-bracket-sections";
+import { catalogHostedFeatureOff } from "@/lib/events-catalog-gate";
 import { eventsLoadingBlockHeight } from "@/lib/events-dialog-shell-style";
 import {
   buildResultCardBlob,
@@ -80,6 +84,7 @@ import { seatCapFillRight } from "@/lib/seat-cap-display";
 import { eventJoinPlayHref } from "@/lib/tournament-free-join";
 import { withWalletFocusParam } from "@/lib/wallet-focus-href";
 import { useAuthStore } from "@/store/auth";
+import { isCashRmgChromeReady } from "@/types/cash-rmg";
 import type { HostedEvent } from "@/types/events";
 import { isEventsPlayerChromeReady } from "@/types/events-player-chrome";
 import { isPaymentModalChromeReady } from "@/types/payment-modal-chrome";
@@ -198,7 +203,8 @@ export function EventsJoinPanel({ initialCode = "", initialEventId = "" }: Props
   const showStandings = Boolean(event?.finished_at) || placedEntries.length > 0;
 
   const geoQuery = useDetectBrowserCountryQuery(Boolean(token) && needsTopUp);
-  const country = (geoQuery.data ?? "").trim();
+  const eligibilityQuery = useCashEligibilityQuery(token, Boolean(token) && needsTopUp);
+  const country = (eligibilityQuery.data?.country_code || geoQuery.data || "").trim();
   const walletQuery = useWalletQuery(token, Boolean(token) && needsTopUp && Boolean(country));
   const routeQuery = usePaymentRouteQuery(needsTopUp && Boolean(country));
   const isManual = routeQuery.data?.provider === "manual_transfer";
@@ -206,6 +212,29 @@ export function EventsJoinPanel({ initialCode = "", initialEventId = "" }: Props
   const payChrome = isPaymentModalChromeReady(payChromeQuery.data)
     ? payChromeQuery.data
     : undefined;
+  const flagsQuery = useRestFeatureFlagsQuery();
+  const cashChromeQuery = useCashRmgChromeQuery(Boolean(token) && needsTopUp);
+  const cashChrome = isCashRmgChromeReady(cashChromeQuery.data)
+    ? cashChromeQuery.data.chrome
+    : undefined;
+  const cashPolicy = isCashRmgChromeReady(cashChromeQuery.data)
+    ? cashChromeQuery.data.policy
+    : undefined;
+  const flagsSettled = !flagsQuery.isLoading && (flagsQuery.isFetched || flagsQuery.isError);
+  const cashEnabled = flagsQuery.data?.cash_rmg_enabled === true;
+  const cashLocked = isCashJurisdictionLocked({
+    flagsSettled,
+    cashEnabled,
+    country,
+    policy: cashPolicy,
+    disabledCountryCodes: flagsQuery.data?.cash_rmg_disabled_countries,
+    eligibility: eligibilityQuery.data,
+    eligibilityFetched: eligibilityQuery.isFetched,
+  });
+  const cashLockMessage = cashJurisdictionLockMessage(cashLocked, country, cashChrome, {
+    cashEnabled,
+    eligibility: eligibilityQuery.data,
+  });
   const join = useJoinHostedEventMutation(token);
   const checkout = useCheckoutMutation(token);
 
@@ -523,10 +552,16 @@ export function EventsJoinPanel({ initialCode = "", initialEventId = "" }: Props
           className="space-y-3 rounded-lg border border-[var(--dama-border)] bg-[var(--dama-card)]"
           style={{ padding: cardPad }}
         >
-          <p className="text-sm text-[var(--dama-danger)]">
-            {softCommunityJoinStatusMessage(chrome.insufficient_entry_fee)}
-          </p>
-          {isManual ? (
+          {cashLocked ? (
+            <p className="text-sm text-[var(--dama-danger)]">
+              {cashLockMessage || softCommunityJoinStatusMessage(chrome.insufficient_entry_fee)}
+            </p>
+          ) : (
+            <p className="text-sm text-[var(--dama-danger)]">
+              {softCommunityJoinStatusMessage(chrome.insufficient_entry_fee)}
+            </p>
+          )}
+          {cashLocked ? null : isManual ? (
             (chrome.top_up_href || "").trim() ? (
               <Button asChild variant="gold">
                 <Link href={withWalletFocusParam(chrome.top_up_href, "topup")}>
@@ -552,6 +587,10 @@ export function EventsJoinPanel({ initialCode = "", initialEventId = "" }: Props
                   isLoading={checkout.isPending}
                   pendingLabel={payChrome.checkout_pending}
                   onClick={() => {
+                    if (cashLocked) {
+                      if (cashLockMessage) toast.error(cashLockMessage);
+                      return;
+                    }
                     const n = parsePositiveDecimal(topUpAmount);
                     if (n == null || !country) return;
                     checkout.mutate({

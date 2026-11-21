@@ -53,12 +53,13 @@ import { useDeferredDialogSelection } from "@/hooks/use-deferred-dialog-selectio
 import { useUrlSkip } from "@/hooks/useUrlSkip";
 import { apiToastMessage } from "@/lib/api-toast-message";
 import { isAgeRequiredError, isPhoneKycRequiredError } from "@/lib/cash-gate-error";
+import { cashJurisdictionLockMessage, isCashJurisdictionLocked } from "@/lib/cash-jurisdiction";
 import { paidStatusTextClass } from "@/lib/payment-status-display";
 import { parsePositiveDecimal } from "@/lib/sanitize-decimal-input";
 import { useAuthHydrated, useAuthStore } from "@/store/auth";
 import { isCashRmgChromeReady } from "@/types/cash-rmg";
 import { isMediaUploadChromeReady } from "@/types/media-upload-chrome";
-import { isManualCheckoutResult, type PayoutMethod } from "@/types/payments";
+import { type PayoutMethod, isManualCheckoutResult } from "@/types/payments";
 import { isWalletChromeReady } from "@/types/wallet-chrome";
 import { useQueryClient } from "@tanstack/react-query";
 import { HandCoins, IdCard, Phone, Plus, Receipt } from "lucide-react";
@@ -181,14 +182,24 @@ export function WalletWorkspace({ moneyBasePath = "" }: WalletWorkspaceProps) {
   const flagsSettled = !flagsQuery.isLoading && (flagsQuery.isFetched || flagsQuery.isError);
   const cashEnabled = flagsQuery.data?.cash_rmg_enabled === true;
   const disabledCountries = flagsQuery.data?.cash_rmg_disabled_countries;
-  const countryBlocked =
-    Boolean(country) &&
-    Array.isArray(disabledCountries) &&
-    disabledCountries.some((c) => c.trim().toUpperCase() === country.trim().toUpperCase());
-  const cashLocked = flagsSettled && (!cashEnabled || countryBlocked);
-  const cashLockMessage = countryBlocked
-    ? (cashChrome?.jurisdiction_blocked_error || "").trim()
-    : (cashChrome?.cash_disabled_error || "").trim();
+  const cashPolicy = isCashRmgChromeReady(cashChromeQuery.data)
+    ? cashChromeQuery.data.policy
+    : undefined;
+  const eligibilityCountry = (eligibilityQuery.data?.country_code || "").trim();
+  const gateCountry = eligibilityCountry || country;
+  const cashLocked = isCashJurisdictionLocked({
+    flagsSettled,
+    cashEnabled,
+    country: gateCountry,
+    policy: cashPolicy,
+    disabledCountryCodes: disabledCountries,
+    eligibility: eligibilityQuery.data,
+    eligibilityFetched: eligibilityQuery.isFetched,
+  });
+  const cashLockMessage = cashJurisdictionLockMessage(cashLocked, gateCountry, cashChrome, {
+    cashEnabled,
+    eligibility: eligibilityQuery.data,
+  });
   const eligibilityKey = (eligibilityQuery.data?.error_key || "").trim();
   const ageBlocked = eligibilityQuery.isFetched && eligibilityKey === "age_required";
   const phoneBlocked = eligibilityQuery.isFetched && eligibilityKey === "phone_kyc";

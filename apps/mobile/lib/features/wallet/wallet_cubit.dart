@@ -99,19 +99,55 @@ class WalletState extends Equatable {
   final PayoutHistoryMeta? payoutHistoryMeta;
 
   /// Fail-closed after flags settle - not while cash gate is still loading.
+  /// Matches server EvaluateCash: allowlist + disabled list + kill switch.
   bool get cashLocked {
     if (!cashGateLoaded) return false;
+    final el = cashEligibility;
+    if (cashEligibilityLoaded && el != null) {
+      if (el.ok) return false;
+      final key = el.errorKey.trim();
+      if (key == 'jurisdiction' ||
+          key == 'cash_disabled' ||
+          key == 'unavailable') {
+        return true;
+      }
+      // age / phone / locate use dedicated gates.
+      if (key == 'age_required' ||
+          key == 'phone_kyc' ||
+          key == 'locate_required' ||
+          key == 'locate_stale' ||
+          key == 'country_required') {
+        return false;
+      }
+    }
     if (!cashRmgEnabled) return true;
+    final allowed = cashRmgPolicy?.allowedCountryCodes ?? const <String>[];
+    if (allowed.isEmpty) return true;
     final cc = country.trim().toUpperCase();
     if (cc.isEmpty) return false;
+    final onAllowlist = allowed.any((c) => c.trim().toUpperCase() == cc);
+    if (!onAllowlist) return true;
     return cashRmgDisabledCountries.any((c) => c.trim().toUpperCase() == cc);
   }
 
   String get cashLockMessage {
+    final elKey = cashEligibility?.errorKey.trim() ?? '';
+    if (elKey == 'jurisdiction') {
+      return jurisdictionBlockedError.isNotEmpty
+          ? jurisdictionBlockedError
+          : cashDisabledError;
+    }
+    if (elKey == 'cash_disabled' || elKey == 'unavailable') {
+      return cashDisabledError;
+    }
     final cc = country.trim().toUpperCase();
-    if (cashRmgEnabled &&
-        cc.isNotEmpty &&
-        cashRmgDisabledCountries.any((c) => c.trim().toUpperCase() == cc)) {
+    final allowed = cashRmgPolicy?.allowedCountryCodes ?? const <String>[];
+    final outside = cc.isNotEmpty &&
+        (allowed.isEmpty ||
+            !allowed.any((c) => c.trim().toUpperCase() == cc) ||
+            cashRmgDisabledCountries
+                .any((c) => c.trim().toUpperCase() == cc));
+    if (cashRmgEnabled && outside) {
       return jurisdictionBlockedError.isNotEmpty
           ? jurisdictionBlockedError
           : cashDisabledError;

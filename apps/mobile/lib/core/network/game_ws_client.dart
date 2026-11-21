@@ -15,12 +15,24 @@ class GameWsClient {
   String connectionErrorMessage;
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
+  Timer? _pingTimer;
   final _controller = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get messages => _controller.stream;
 
   /// True while a channel is open (best-effort; sink errors still fail closed).
   bool get isConnected => _channel != null;
+
+  void _startPing() {
+    _pingTimer?.cancel();
+    // Keepalive: proxy idle kills ~2–3m silent sockets → mid-game move failures.
+    _pingTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (_channel == null) return;
+      try {
+        ping();
+      } catch (_) {}
+    });
+  }
 
   Future<void> connectGame({
     required String token,
@@ -32,11 +44,13 @@ class GameWsClient {
           '/ws/game?token=$token&game_id=$gameId',
     );
     _channel = WebSocketChannel.connect(uri);
+    _startPing();
     _sub = _channel!.stream.listen(
       (event) {
         if (event is String) {
           try {
             final map = jsonDecode(event) as Map<String, dynamic>;
+            if (map['type'] == 'pong') return;
             _controller.add(map);
           } catch (_) {
             _controller.add({'type': 'raw', 'data': event});
@@ -59,10 +73,13 @@ class GameWsClient {
     }
     final uri = Uri.parse(origin.replaceFirst('http', 'ws') + q.toString());
     _channel = WebSocketChannel.connect(uri);
+    _startPing();
     _sub = _channel!.stream.listen((event) {
       if (event is String) {
         try {
-          _controller.add(jsonDecode(event) as Map<String, dynamic>);
+          final map = jsonDecode(event) as Map<String, dynamic>;
+          if (map['type'] == 'pong') return;
+          _controller.add(map);
         } catch (_) {}
       }
     });
@@ -80,6 +97,8 @@ class GameWsClient {
   void ping() => _channel?.sink.add('ping');
 
   Future<void> disconnect() async {
+    _pingTimer?.cancel();
+    _pingTimer = null;
     await _sub?.cancel();
     _sub = null;
     await _channel?.sink.close();

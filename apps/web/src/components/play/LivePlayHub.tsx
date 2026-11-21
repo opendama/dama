@@ -852,178 +852,217 @@ export function LivePlayHub({
     const url = resolveWsUrl(activeId, effectiveToken);
     if (!url) return;
 
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-    ws.onmessage = (ev) => {
-      try {
-        const msg = JSON.parse(ev.data as string) as GameWsMessage;
-        if (msg.type === "feature_flags") {
-          void invalidateFeatureFlags(qc);
-          if (msg.flags?.vs_ai_enabled === false) {
-            toast.message(chrome.toast_computer_unavailable);
-          }
-          return;
-        }
-        if (msg.type === "avatar_updated") {
-          const uid = typeof msg.user_id === "string" ? msg.user_id.trim() : "";
-          const thumbRaw = msg.avatar_thumb_url;
-          const fullRaw = msg.avatar_full_url;
-          const thumb =
-            typeof thumbRaw === "string" ? thumbRaw.trim() : thumbRaw === null ? "" : undefined;
-          const full =
-            typeof fullRaw === "string" ? fullRaw.trim() : fullRaw === null ? "" : undefined;
-          if (uid && (thumb !== undefined || full !== undefined)) {
-            const nextThumb = thumb ?? "";
-            const nextFull = full ?? "";
-            const selfId = useAuthStore.getState().user?.id;
-            const sessionToken = useAuthStore.getState().token;
-            if (selfId && uid === selfId && sessionToken) {
-              const cur = useAuthStore.getState().user;
-              if (cur) {
-                useAuthStore.getState().setSession(sessionToken, {
-                  ...cur,
-                  avatarThumbUrl: nextThumb || null,
-                  avatarFullUrl: nextFull || null,
-                });
-              }
+    let disposed = false;
+    let pingTimer: ReturnType<typeof setInterval> | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
+
+    const clearPing = () => {
+      if (pingTimer) {
+        clearInterval(pingTimer);
+        pingTimer = null;
+      }
+    };
+
+    const bindSocket = (ws: WebSocket) => {
+      wsRef.current = ws;
+      ws.onopen = () => {
+        attempt = 0;
+        clearPing();
+        // Keepalive: Render/proxy idle kills ~2–3m silent sockets → mid-game Move failed.
+        pingTimer = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send("ping");
+        }, 20000);
+      };
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data as string) as GameWsMessage;
+          if (msg.type === "pong") return;
+          if (msg.type === "feature_flags") {
+            void invalidateFeatureFlags(qc);
+            if (msg.flags?.vs_ai_enabled === false) {
+              toast.message(chrome.toast_computer_unavailable);
             }
-            patchAvatarEverywhere(qc, uid, nextThumb || null, nextFull || null);
+            return;
           }
-          void invalidateAvatarSurfaces(qc, uid || null);
-          return;
-        }
-        if (msg.type === "ai_thinking") {
-          setAiThinking(Boolean(msg.thinking));
-          return;
-        }
-        if (msg.type === "error") {
-          const key = String((msg as { error_key?: string }).error_key || "").trim();
-          // Fail closed: WS pause rejects send error_key only (empty English).
-          const pauseByKey = key === "err_officially_paused" || key === "err_game_paused";
-          if (pauseByKey) {
-            const official = key === "err_officially_paused";
-            const label = (
-              (official ? chrome.err_officially_paused : chrome.err_game_paused) || ""
-            ).trim();
-            // In-flight move: reject with chrome so catch toasts once (never sentinel English).
+          if (msg.type === "avatar_updated") {
+            const uid = typeof msg.user_id === "string" ? msg.user_id.trim() : "";
+            const thumbRaw = msg.avatar_thumb_url;
+            const fullRaw = msg.avatar_full_url;
+            const thumb =
+              typeof thumbRaw === "string" ? thumbRaw.trim() : thumbRaw === null ? "" : undefined;
+            const full =
+              typeof fullRaw === "string" ? fullRaw.trim() : fullRaw === null ? "" : undefined;
+            if (uid && (thumb !== undefined || full !== undefined)) {
+              const nextThumb = thumb ?? "";
+              const nextFull = full ?? "";
+              const selfId = useAuthStore.getState().user?.id;
+              const sessionToken = useAuthStore.getState().token;
+              if (selfId && uid === selfId && sessionToken) {
+                const cur = useAuthStore.getState().user;
+                if (cur) {
+                  useAuthStore.getState().setSession(sessionToken, {
+                    ...cur,
+                    avatarThumbUrl: nextThumb || null,
+                    avatarFullUrl: nextFull || null,
+                  });
+                }
+              }
+              patchAvatarEverywhere(qc, uid, nextThumb || null, nextFull || null);
+            }
+            void invalidateAvatarSurfaces(qc, uid || null);
+            return;
+          }
+          if (msg.type === "ai_thinking") {
+            setAiThinking(Boolean(msg.thinking));
+            return;
+          }
+          if (msg.type === "error") {
+            const key = String((msg as { error_key?: string }).error_key || "").trim();
+            // Fail closed: WS pause rejects send error_key only (empty English).
+            const pauseByKey = key === "err_officially_paused" || key === "err_game_paused";
+            if (pauseByKey) {
+              const official = key === "err_officially_paused";
+              const label = (
+                (official ? chrome.err_officially_paused : chrome.err_game_paused) || ""
+              ).trim();
+              // In-flight move: reject with chrome so catch toasts once (never sentinel English).
+              if (moveWaitRef.current) {
+                moveWaitRef.current.reject(new Error(label || chrome.toast_move_failed));
+                moveWaitRef.current = null;
+                return;
+              }
+              if (label) toast.error(label);
+              return;
+            }
+            // Fail closed: never toast/reject with WS English body; chrome or error_key only.
             if (moveWaitRef.current) {
-              moveWaitRef.current.reject(new Error(label || chrome.toast_move_failed));
+              moveWaitRef.current.reject(new Error((chrome.toast_move_failed || "").trim()));
               moveWaitRef.current = null;
               return;
             }
-            if (label) toast.error(label);
-            return;
-          }
-          // Fail closed: never toast/reject with WS English body; chrome or error_key only.
-          if (moveWaitRef.current) {
-            moveWaitRef.current.reject(new Error((chrome.toast_move_failed || "").trim()));
-            moveWaitRef.current = null;
-            return;
-          }
-          if (
-            key === "err_clock_still_running" ||
-            key === "err_match_clock_inactive" ||
-            key === "not_a_seat"
-          ) {
-            return;
-          }
-          if (
-            key === "err_clock_flag" ||
-            key === "err_clock_flag_failed" ||
-            key === "clock_flag_failed"
-          ) {
-            const label = (chrome.toast_clock_flag_failed || "").trim();
-            if (label) toast.error(label);
-            return;
-          }
-        }
-        if (
-          msg.type === "game_chat_message" ||
-          msg.type === "game_chat_toggle" ||
-          msg.type === "game_chat_reaction" ||
-          msg.type === "game_chat_read"
-        ) {
-          if (msg.type === "game_chat_message") {
-            notifyIncomingChatMessage({
-              myUserId: useAuthStore.getState().user?.id,
-              payload: msg,
-            });
-          }
-          const gid = (msg.game_id || activeId || "").trim();
-          if (gid) void qc.invalidateQueries({ queryKey: ["game-chat", gid] });
-          return;
-        }
-        if (
-          msg.type === "dm_request" ||
-          msg.type === "dm_message" ||
-          msg.type === "dm_request_updated" ||
-          msg.type === "dm_reaction" ||
-          msg.type === "dm_read"
-        ) {
-          if (msg.type === "dm_message") {
-            notifyIncomingChatMessage({
-              myUserId: useAuthStore.getState().user?.id,
-              payload: msg,
-            });
-          }
-          void qc.invalidateQueries({ queryKey: ["dms"] });
-          return;
-        }
-        if ((msg.type === "move_ack" || msg.type === "game_state") && msg.game) {
-          setAiThinking(false);
-          const prev = gameRef.current;
-          const wasLocal = pendingLocalMoveRef.current || Boolean(moveWaitRef.current);
-          const incoming = msg.game;
-          const envRole =
-            typeof (msg as { actor_role?: string }).actor_role === "string"
-              ? String((msg as { actor_role?: string }).actor_role).trim()
-              : "";
-          const envName =
-            typeof (msg as { actor_display_name?: string }).actor_display_name === "string"
-              ? String((msg as { actor_display_name?: string }).actor_display_name).trim()
-              : "";
-          const wasOfficial =
-            Boolean(prev?.paused) && (prev?.pause_kind || "").trim() === "official";
-          // SpectateHub parity: envelope actor when resume game payload cleared pause fields.
-          if (wasOfficial && !incoming.paused) {
-            const role = officialPauseRoleLabel(
-              envRole || prev?.pause_actor_role,
-              officialPauseChrome,
-            );
-            const name = envName || (prev?.pause_actor_display_name || "").trim();
-            if (role && name) {
-              const banner = applyOfficialPauseFmt(officialPauseChrome?.banner_resumed_fmt, {
-                role,
-                name,
-              });
-              if (banner) setResumeBanner(banner);
+            if (
+              key === "err_clock_still_running" ||
+              key === "err_match_clock_inactive" ||
+              key === "not_a_seat"
+            ) {
+              return;
+            }
+            if (
+              key === "err_clock_flag" ||
+              key === "err_clock_flag_failed" ||
+              key === "clock_flag_failed"
+            ) {
+              const label = (chrome.toast_clock_flag_failed || "").trim();
+              if (label) toast.error(label);
+              return;
             }
           }
-          const merged = wasLocal
-            ? mergeBoardStateAfterPlayerMove(prev, incoming)
-            : mergeRemoteBoardState(prev, incoming);
-          if (moveWaitRef.current) {
-            moveWaitRef.current.resolve(incoming);
-            moveWaitRef.current = null;
+          if (
+            msg.type === "game_chat_message" ||
+            msg.type === "game_chat_toggle" ||
+            msg.type === "game_chat_reaction" ||
+            msg.type === "game_chat_read"
+          ) {
+            if (msg.type === "game_chat_message") {
+              notifyIncomingChatMessage({
+                myUserId: useAuthStore.getState().user?.id,
+                payload: msg,
+              });
+            }
+            const gid = (msg.game_id || activeId || "").trim();
+            if (gid) void qc.invalidateQueries({ queryKey: ["game-chat", gid] });
+            return;
           }
-          pendingLocalMoveRef.current = false;
-          qc.setQueryData(gameStateQueryKey(incoming.id), incoming);
-          setGame(merged);
-          setSelected(null);
+          if (
+            msg.type === "dm_request" ||
+            msg.type === "dm_message" ||
+            msg.type === "dm_request_updated" ||
+            msg.type === "dm_reaction" ||
+            msg.type === "dm_read"
+          ) {
+            if (msg.type === "dm_message") {
+              notifyIncomingChatMessage({
+                myUserId: useAuthStore.getState().user?.id,
+                payload: msg,
+              });
+            }
+            void qc.invalidateQueries({ queryKey: ["dms"] });
+            return;
+          }
+          if ((msg.type === "move_ack" || msg.type === "game_state") && msg.game) {
+            setAiThinking(false);
+            const prev = gameRef.current;
+            const wasLocal = pendingLocalMoveRef.current || Boolean(moveWaitRef.current);
+            const incoming = msg.game;
+            const envRole =
+              typeof (msg as { actor_role?: string }).actor_role === "string"
+                ? String((msg as { actor_role?: string }).actor_role).trim()
+                : "";
+            const envName =
+              typeof (msg as { actor_display_name?: string }).actor_display_name === "string"
+                ? String((msg as { actor_display_name?: string }).actor_display_name).trim()
+                : "";
+            const wasOfficial =
+              Boolean(prev?.paused) && (prev?.pause_kind || "").trim() === "official";
+            // SpectateHub parity: envelope actor when resume game payload cleared pause fields.
+            if (wasOfficial && !incoming.paused) {
+              const role = officialPauseRoleLabel(
+                envRole || prev?.pause_actor_role,
+                officialPauseChrome,
+              );
+              const name = envName || (prev?.pause_actor_display_name || "").trim();
+              if (role && name) {
+                const banner = applyOfficialPauseFmt(officialPauseChrome?.banner_resumed_fmt, {
+                  role,
+                  name,
+                });
+                if (banner) setResumeBanner(banner);
+              }
+            }
+            const merged = wasLocal
+              ? mergeBoardStateAfterPlayerMove(prev, incoming)
+              : mergeRemoteBoardState(prev, incoming);
+            if (moveWaitRef.current) {
+              moveWaitRef.current.resolve(incoming);
+              moveWaitRef.current = null;
+            }
+            pendingLocalMoveRef.current = false;
+            qc.setQueryData(gameStateQueryKey(incoming.id), incoming);
+            setGame(merged);
+            setSelected(null);
+          }
+        } catch {
+          // ignore non-JSON
         }
-      } catch {
-        // ignore non-JSON
-      }
+      };
+      ws.onerror = () => {
+        if (moveWaitRef.current) {
+          moveWaitRef.current.reject(new Error(chrome.toast_live_error));
+          moveWaitRef.current = null;
+        }
+      };
+      ws.onclose = () => {
+        clearPing();
+        if (disposed) return;
+        if (wsRef.current === ws) wsRef.current = null;
+        const delay = Math.min(1000 * 2 ** attempt, 8000);
+        attempt += 1;
+        reconnectTimer = setTimeout(() => {
+          if (disposed) return;
+          bindSocket(new WebSocket(url));
+        }, delay);
+      };
     };
-    ws.onerror = () => {
-      if (moveWaitRef.current) {
-        moveWaitRef.current.reject(new Error(chrome.toast_live_error));
-        moveWaitRef.current = null;
-      }
-    };
+
+    bindSocket(new WebSocket(url));
     return () => {
-      ws.close();
+      disposed = true;
+      clearPing();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      const cur = wsRef.current;
       wsRef.current = null;
+      cur?.close();
     };
   }, [chrome, officialPauseChrome, hydrated, game?.id, gameIdParam, effectiveToken, qc]);
 
@@ -1489,6 +1528,7 @@ export function LivePlayHub({
 
       // Do not hold global `busy` for WS/AI RTT - that froze the UI after put-down.
       // Scene animation + turn/must_continue gate input; pendingLocalMoveRef merges WS.
+      const moveCountAtSend = game.move_count ?? 0;
       const waitPromise = new Promise<GamePayload>((resolve, reject) => {
         const timer = window.setTimeout(() => {
           if (moveWaitRef.current) {
@@ -1496,7 +1536,7 @@ export function LivePlayHub({
             pendingLocalMoveRef.current = false;
             reject(new Error(chrome.toast_move_timeout));
           }
-        }, 8000);
+        }, 12000);
         moveWaitRef.current = {
           resolve: (g) => {
             window.clearTimeout(timer);
@@ -1518,8 +1558,10 @@ export function LivePlayHub({
       });
       void waitPromise.catch((err: unknown) => {
         pendingLocalMoveRef.current = false;
-        // Winning ply already painted (optimistic or late game_state) - never contradict with Move failed.
-        if (gameRef.current?.outcome != null || gameRef.current?.draw) return;
+        const live = gameRef.current;
+        // Server already advanced / ended - never contradict with Move failed.
+        if (live?.outcome != null || live?.draw) return;
+        if ((live?.move_count ?? 0) > moveCountAtSend) return;
         const raw = err instanceof Error ? err.message.trim() : "";
         if (raw && raw === chrome.toast_move_timeout) {
           toast.error(chrome.toast_move_timeout);

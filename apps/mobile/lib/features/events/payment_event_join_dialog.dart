@@ -88,6 +88,7 @@ class _PaymentEventJoinDialogState extends State<PaymentEventJoinDialog> {
   PaymentModalChrome? _chrome;
   LegalChrome? _legalChrome;
   CashRmgChrome? _cashChrome;
+  CashRmgPolicy? _cashPolicy;
   FeatureFlagsWire? _flags;
   EventsCatalog? _catalog;
   bool _cashGateSettled = false;
@@ -132,6 +133,7 @@ class _PaymentEventJoinDialogState extends State<PaymentEventJoinDialog> {
       final chromeRes = results[1];
       FeatureFlagsWire? flags;
       CashRmgChrome? cashChrome;
+      CashRmgPolicy? cashPolicy;
       if (flagsRes.statusCode == 200) {
         final map = jsonDecode(flagsRes.body);
         if (map is Map<String, dynamic>) {
@@ -141,9 +143,15 @@ class _PaymentEventJoinDialogState extends State<PaymentEventJoinDialog> {
       if (chromeRes.statusCode == 200) {
         final map = jsonDecode(chromeRes.body);
         if (map is Map<String, dynamic>) {
-          final chromeMap = map['chrome'];
-          if (chromeMap is Map<String, dynamic>) {
-            cashChrome = CashRmgChrome.fromJson(chromeMap);
+          final payload = CashRmgPayload.fromJson(map);
+          if (payload != null) {
+            cashChrome = payload.chrome;
+            cashPolicy = payload.policy;
+          } else {
+            final chromeMap = map['chrome'];
+            if (chromeMap is Map<String, dynamic>) {
+              cashChrome = CashRmgChrome.fromJson(chromeMap);
+            }
           }
         }
       }
@@ -151,6 +159,7 @@ class _PaymentEventJoinDialogState extends State<PaymentEventJoinDialog> {
       setState(() {
         _flags = flags;
         _cashChrome = cashChrome;
+        _cashPolicy = cashPolicy;
         _cashGateSettled = true;
       });
     } catch (_) {
@@ -166,22 +175,26 @@ class _PaymentEventJoinDialogState extends State<PaymentEventJoinDialog> {
     if (!_cashGateSettled) return false;
     final flags = _flags;
     if (flags == null) return true;
-    if (!flags.cashRmgEnabled) return true;
     final cc = countryCode.trim().toUpperCase();
     if (cc.isEmpty) return false;
-    return flags.cashRmgDisabledCountries
-        .any((c) => c.trim().toUpperCase() == cc);
+    return !flags.cashAllowedForCountry(
+      cc,
+      allowedCountryCodes: _cashPolicy?.allowedCountryCodes ?? const <String>[],
+    );
   }
 
   String _cashLockMessage(String countryCode) {
     final chrome = _cashChrome;
     if (chrome == null) return '';
     final flags = _flags;
+    final cc = countryCode.trim().toUpperCase();
     if (flags != null &&
         flags.cashRmgEnabled &&
-        countryCode.trim().isNotEmpty &&
-        flags.cashRmgDisabledCountries.any(
-          (c) => c.trim().toUpperCase() == countryCode.trim().toUpperCase(),
+        cc.isNotEmpty &&
+        !flags.cashAllowedForCountry(
+          cc,
+          allowedCountryCodes:
+              _cashPolicy?.allowedCountryCodes ?? const <String>[],
         )) {
       return chrome.jurisdictionBlockedError;
     }

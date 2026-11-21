@@ -49,14 +49,18 @@ export function useCheckoutMutation(token: string | null | undefined) {
     onError: (err) => {
       const chrome = qc.getQueryData<WalletChrome>(walletChromeQueryKey());
       const cashPayload = qc.getQueryData<CashRmgPayload>(cashRmgChromeQueryKey());
-      // Age / phone: one cash-chrome toast (wallet UI also opens the gate dialog).
-      if (isAgeRequiredError(err) || isPhoneKycRequiredError(err)) {
-        chromeOnlyToastError(cashGateChromeMessage(err, cashPayload?.chrome, ""), {
-          id: "wallet-cash-gate-error",
+      // Cash/RMG gates (jurisdiction, age, phone, locate, …) → cash chrome only.
+      const cashMsg = cashGateChromeMessage(err, cashPayload?.chrome, "");
+      if (cashMsg) {
+        chromeOnlyToastError(cashMsg, {
+          id:
+            isAgeRequiredError(err) || isPhoneKycRequiredError(err)
+              ? "wallet-cash-gate-error"
+              : "wallet-checkout-cash-gate",
         });
         return;
       }
-      // One wallet chrome toast only - never API JSON / Error.message / dual toasts.
+      // Provider / wallet chrome only - never API JSON / Error.message / dual toasts.
       chromeOnlyToastError(
         walletChromeErrorMessage(err, chrome, (chrome?.checkout_failed || "").trim()),
         { id: "wallet-checkout-error" },

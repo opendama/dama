@@ -10,6 +10,7 @@ import {
   type JoinHostedEventError,
   useJoinHostedEventMutation,
 } from "@/hooks/mutation/useJoinHostedEventMutation";
+import { useCashEligibilityQuery } from "@/hooks/query/useCashEligibilityQuery";
 import { useCashRmgChromeQuery } from "@/hooks/query/useCashRmgChromeQuery";
 import { useDetectBrowserCountryQuery } from "@/hooks/query/useDetectBrowserCountryQuery";
 import { useEventsCatalogQuery } from "@/hooks/query/useEventsCatalogQuery";
@@ -18,6 +19,7 @@ import { usePaymentModalChromeQuery } from "@/hooks/query/usePaymentModalChromeQ
 import { usePaymentRouteQuery } from "@/hooks/query/usePaymentRouteQuery";
 import { useRestFeatureFlagsQuery } from "@/hooks/query/useRestFeatureFlagsQuery";
 import { useWalletQuery } from "@/hooks/query/useWalletQuery";
+import { cashJurisdictionLockMessage, isCashJurisdictionLocked } from "@/lib/cash-jurisdiction";
 import {
   softCommunityJoinStatusMessage,
   softPaymentModalTitle,
@@ -79,8 +81,14 @@ export function PaymentEventJoinModal({
   const catalogQuery = useEventsCatalogQuery(open);
 
   const geoQuery = useDetectBrowserCountryQuery(open && Boolean(token));
-  const country = (geoQuery.data ?? "").trim();
-  const geoSettled = open && Boolean(token) && !geoQuery.isLoading && !geoQuery.isFetching;
+  const eligibilityQuery = useCashEligibilityQuery(token, open && Boolean(token));
+  const country = (eligibilityQuery.data?.country_code || geoQuery.data || "").trim();
+  const geoSettled =
+    open &&
+    Boolean(token) &&
+    !geoQuery.isLoading &&
+    !geoQuery.isFetching &&
+    !eligibilityQuery.isLoading;
   const countryMissing = geoSettled && !country;
 
   const walletQuery = useWalletQuery(token, open && Boolean(token) && Boolean(country));
@@ -91,16 +99,29 @@ export function PaymentEventJoinModal({
   const cashChrome = isCashRmgChromeReady(cashChromeQuery.data)
     ? cashChromeQuery.data.chrome
     : undefined;
+  const cashPolicy = isCashRmgChromeReady(cashChromeQuery.data)
+    ? cashChromeQuery.data.policy
+    : undefined;
   const flagsSettled = !flagsQuery.isLoading && (flagsQuery.isFetched || flagsQuery.isError);
   const cashEnabled = flagsQuery.data?.cash_rmg_enabled === true;
   const disabledCountries = flagsQuery.data?.cash_rmg_disabled_countries;
-  const countryBlocked =
-    Boolean(country) &&
-    Array.isArray(disabledCountries) &&
-    disabledCountries.some((c) => c.trim().toUpperCase() === country.trim().toUpperCase());
   const cashLocked = Boolean(
-    event && !event.is_free_entry && flagsSettled && (!cashEnabled || countryBlocked),
+    event &&
+      !event.is_free_entry &&
+      isCashJurisdictionLocked({
+        flagsSettled,
+        cashEnabled,
+        country,
+        policy: cashPolicy,
+        disabledCountryCodes: disabledCountries,
+        eligibility: eligibilityQuery.data,
+        eligibilityFetched: eligibilityQuery.isFetched,
+      }),
   );
+  const cashLockMessage = cashJurisdictionLockMessage(cashLocked, country, cashChrome, {
+    cashEnabled,
+    eligibility: eligibilityQuery.data,
+  });
 
   const join = useJoinHostedEventMutation(token);
   const checkout = useCheckoutMutation(token);
@@ -201,10 +222,6 @@ export function PaymentEventJoinModal({
       (Boolean(country) && (walletQuery.isLoading || !balanceReady)));
   const canAfford = event.is_free_entry || (balanceReady && balance != null && balance >= fee);
   const topUpValid = parsePositiveDecimal(topUpAmount) != null;
-  const cashLockMessage = countryBlocked
-    ? (cashChrome?.jurisdiction_blocked_error || cashChrome?.cash_disabled_error || "").trim()
-    : (cashChrome?.cash_disabled_error || "").trim();
-
   const goPlayAfterJoin = (eventId: string, pending: boolean) => {
     onJoined?.(eventId);
     onOpenChange(false);

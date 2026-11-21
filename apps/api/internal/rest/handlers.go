@@ -692,91 +692,109 @@ func (a *API) ApplyMoveCore(ctx context.Context, id, userID string, from, to [2]
 		engine.GrantClockIncrement(next, mover)
 	}
 
-	// Non-monetary VS-AI reply when it is the computer's turn.
-	if next.Mode == "ai" && next.AIPlayer != nil && a.Flags.Get(ctx).VSAIEnabled {
-		if a.Hub != nil {
-			a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": true})
-		}
-		for engine.GameOutcome(next) == nil && next.MustContinue == nil && next.Turn == *next.AIPlayer {
-			// Concurrent pause (other tab / seat) wins: keep human ply, stop AI replies.
-			if a.applyStorePauseOnto(id, next) {
-				break
-			}
-			nowMs = time.Now().UnixMilli()
-			if flagged, _ := engine.DebitActiveClock(next, nowMs); flagged {
-				if a.Hub != nil {
-					a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": false})
-				}
-				return a.finishClockFlag(ctx, id, next)
-			}
-			// Pause may land after debit; do not spend an AI ply under freeze.
-			if a.applyStorePauseOnto(id, next) {
-				break
-			}
-			aiMover := next.Turn
-			aiMove := ai.ChooseMove(next, next.AISearchDepth)
-			if aiMove == nil {
-				break
-			}
-			if a.applyStorePauseOnto(id, next) {
-				break
-			}
-			aiNext, err := engine.ApplyMove(next, *aiMove)
-			if err != nil {
-				break
-			}
-			next = aiNext
-			if next.MustContinue == nil {
-				engine.GrantClockIncrement(next, aiMover)
-			}
-			if next.MustContinue != nil {
-				for next.MustContinue != nil && engine.GameOutcome(next) == nil {
-					if a.applyStorePauseOnto(id, next) {
-						break
-					}
-					nowMs = time.Now().UnixMilli()
-					if flagged, _ := engine.DebitActiveClock(next, nowMs); flagged {
-						if a.Hub != nil {
-							a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": false})
-						}
-						return a.finishClockFlag(ctx, id, next)
-					}
-					if a.applyStorePauseOnto(id, next) {
-						break
-					}
-					contMover := next.Turn
-					cont := ai.ChooseMove(next, next.AISearchDepth)
-					if cont == nil {
-						break
-					}
-					if a.applyStorePauseOnto(id, next) {
-						break
-					}
-					contNext, err := engine.ApplyMove(next, *cont)
-					if err != nil {
-						break
-					}
-					next = contNext
-					if next.MustContinue == nil {
-						engine.GrantClockIncrement(next, contMover)
-					}
-				}
-			}
-		}
-		if a.Hub != nil {
-			a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": false})
-		}
-	}
-
-	// Last look: do not wipe a pause that landed while this move was in flight.
+	// Persist + broadcast the human ply immediately. Clients clear moveWait on game_state;
+	// waiting for AI search before this broadcast caused false "Move failed" timeouts.
 	_ = a.applyStorePauseOnto(id, next)
-
 	if err := a.Store.Update(id, next); err != nil {
 		return nil, fmt.Errorf("unable to save move")
 	}
+	humanPayload := a.gamePayload(id, next)
+	if a.Hub != nil {
+		a.Hub.BroadcastGame(id, map[string]any{"type": "game_state", "game": humanPayload})
+	}
+	if outcome := engine.GameOutcome(next); outcome != nil {
+		a.scheduleMatchFinalize(id, next, *outcome)
+		return humanPayload, nil
+	}
 
-	// Ack/broadcast the board first. History, career, notifs, and bracket must never
-	// gate the move ACK - that produced false "Move failed" toasts on winning plies.
+	needsAI := next.Mode == "ai" &&
+		next.AIPlayer != nil &&
+		a.Flags.Get(ctx).VSAIEnabled &&
+		next.MustContinue == nil &&
+		next.Turn == *next.AIPlayer
+	if !needsAI {
+		return humanPayload, nil
+	}
+
+	// Non-monetary VS-AI reply after the human ply is already live on clients.
+	if a.Hub != nil {
+		a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": true})
+	}
+	for engine.GameOutcome(next) == nil && next.MustContinue == nil && next.Turn == *next.AIPlayer {
+		// Concurrent pause (other tab / seat) wins: keep human ply, stop AI replies.
+		if a.applyStorePauseOnto(id, next) {
+			break
+		}
+		nowMs = time.Now().UnixMilli()
+		if flagged, _ := engine.DebitActiveClock(next, nowMs); flagged {
+			if a.Hub != nil {
+				a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": false})
+			}
+			return a.finishClockFlag(ctx, id, next)
+		}
+		// Pause may land after debit; do not spend an AI ply under freeze.
+		if a.applyStorePauseOnto(id, next) {
+			break
+		}
+		aiMover := next.Turn
+		aiMove := ai.ChooseMove(next, next.AISearchDepth)
+		if aiMove == nil {
+			break
+		}
+		if a.applyStorePauseOnto(id, next) {
+			break
+		}
+		aiNext, err := engine.ApplyMove(next, *aiMove)
+		if err != nil {
+			break
+		}
+		next = aiNext
+		if next.MustContinue == nil {
+			engine.GrantClockIncrement(next, aiMover)
+		}
+		if next.MustContinue != nil {
+			for next.MustContinue != nil && engine.GameOutcome(next) == nil {
+				if a.applyStorePauseOnto(id, next) {
+					break
+				}
+				nowMs = time.Now().UnixMilli()
+				if flagged, _ := engine.DebitActiveClock(next, nowMs); flagged {
+					if a.Hub != nil {
+						a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": false})
+					}
+					return a.finishClockFlag(ctx, id, next)
+				}
+				if a.applyStorePauseOnto(id, next) {
+					break
+				}
+				contMover := next.Turn
+				cont := ai.ChooseMove(next, next.AISearchDepth)
+				if cont == nil {
+					break
+				}
+				if a.applyStorePauseOnto(id, next) {
+					break
+				}
+				contNext, err := engine.ApplyMove(next, *cont)
+				if err != nil {
+					break
+				}
+				next = contNext
+				if next.MustContinue == nil {
+					engine.GrantClockIncrement(next, contMover)
+				}
+			}
+		}
+	}
+	if a.Hub != nil {
+		a.Hub.BroadcastGame(id, map[string]any{"type": "ai_thinking", "thinking": false})
+	}
+
+	// Last look: do not wipe a pause that landed while AI was thinking.
+	_ = a.applyStorePauseOnto(id, next)
+	if err := a.Store.Update(id, next); err != nil {
+		return nil, fmt.Errorf("unable to save move")
+	}
 	payload := a.gamePayload(id, next)
 	if a.Hub != nil {
 		a.Hub.BroadcastGame(id, map[string]any{"type": "game_state", "game": payload})

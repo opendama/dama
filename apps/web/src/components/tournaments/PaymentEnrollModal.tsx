@@ -7,6 +7,7 @@ import { Field } from "@/components/ui/field";
 import { ShimmerBlock } from "@/components/ui/shimmer-skeletons";
 import { useCheckoutMutation } from "@/hooks/mutation/useCheckoutMutation";
 import { useTournamentEnrollMutation } from "@/hooks/mutation/useTournamentEnrollMutation";
+import { useCashEligibilityQuery } from "@/hooks/query/useCashEligibilityQuery";
 import { useCashRmgChromeQuery } from "@/hooks/query/useCashRmgChromeQuery";
 import { useDetectBrowserCountryQuery } from "@/hooks/query/useDetectBrowserCountryQuery";
 import { useLegalChromeQuery } from "@/hooks/query/useLegalChromeQuery";
@@ -14,6 +15,7 @@ import { usePaymentModalChromeQuery } from "@/hooks/query/usePaymentModalChromeQ
 import { usePaymentRouteQuery } from "@/hooks/query/usePaymentRouteQuery";
 import { useRestFeatureFlagsQuery } from "@/hooks/query/useRestFeatureFlagsQuery";
 import { useWalletQuery } from "@/hooks/query/useWalletQuery";
+import { cashJurisdictionLockMessage, isCashJurisdictionLocked } from "@/lib/cash-jurisdiction";
 import {
   softCommunityJoinStatusMessage,
   softPaymentModalTitle,
@@ -21,7 +23,9 @@ import {
 import { softHostingCancelAction } from "@/lib/hosting-organizer-chrome-soft";
 import { type PrizePoolCardLabels, tournamentPrizePoolLines } from "@/lib/prize-pool-lines";
 import { parsePositiveDecimal, sanitizeDecimalInput } from "@/lib/sanitize-decimal-input";
+import { latchEnrolledTournamentId } from "@/lib/tournament-cup-lobby";
 import { tournamentEnrollErrorChrome } from "@/lib/tournament-free-join";
+import { freeJoinPlayHref, isAlreadyEnrolledError } from "@/lib/tournament-free-join";
 import { withWalletFocusParam } from "@/lib/wallet-focus-href";
 import { useAuthStore } from "@/store/auth";
 import { isCashRmgChromeReady } from "@/types/cash-rmg";
@@ -30,8 +34,6 @@ import { isPaymentModalChromeReady } from "@/types/payment-modal-chrome";
 import type { Tournament } from "@/types/tournament";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { latchEnrolledTournamentId } from "@/lib/tournament-cup-lobby";
-import { freeJoinPlayHref, isAlreadyEnrolledError } from "@/lib/tournament-free-join";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -61,8 +63,15 @@ export function PaymentEnrollModal({
   const legal = isLegalChromeReady(legalQuery.data) ? legalQuery.data : undefined;
 
   const geoQuery = useDetectBrowserCountryQuery(open && Boolean(token));
-  const country = (geoQuery.data ?? "").trim();
-  const geoSettled = open && Boolean(token) && !geoQuery.isLoading && !geoQuery.isFetching;
+  const eligibilityQuery = useCashEligibilityQuery(token, open && Boolean(token));
+  // Checkout/enroll gates use server GeoIP country (eligibility), not GPS invent.
+  const country = (eligibilityQuery.data?.country_code || geoQuery.data || "").trim();
+  const geoSettled =
+    open &&
+    Boolean(token) &&
+    !geoQuery.isLoading &&
+    !geoQuery.isFetching &&
+    !eligibilityQuery.isLoading;
   const countryMissing = geoSettled && !country;
 
   const walletQuery = useWalletQuery(token, open && Boolean(token) && Boolean(country));
@@ -73,17 +82,30 @@ export function PaymentEnrollModal({
   const cashChrome = isCashRmgChromeReady(cashChromeQuery.data)
     ? cashChromeQuery.data.chrome
     : undefined;
+  const cashPolicy = isCashRmgChromeReady(cashChromeQuery.data)
+    ? cashChromeQuery.data.policy
+    : undefined;
   const flagsSettled = !flagsQuery.isLoading && (flagsQuery.isFetched || flagsQuery.isError);
   const cashEnabled = flagsQuery.data?.cash_rmg_enabled === true;
   const disabledCountries = flagsQuery.data?.cash_rmg_disabled_countries;
-  const countryBlocked =
-    Boolean(country) &&
-    Array.isArray(disabledCountries) &&
-    disabledCountries.some((c) => c.trim().toUpperCase() === country.trim().toUpperCase());
   // Fail-closed only after flags settle - never treat "still loading" as cash-off (dormant modal).
   const cashLocked = Boolean(
-    tournament && !tournament.is_free && flagsSettled && (!cashEnabled || countryBlocked),
+    tournament &&
+      !tournament.is_free &&
+      isCashJurisdictionLocked({
+        flagsSettled,
+        cashEnabled,
+        country,
+        policy: cashPolicy,
+        disabledCountryCodes: disabledCountries,
+        eligibility: eligibilityQuery.data,
+        eligibilityFetched: eligibilityQuery.isFetched,
+      }),
   );
+  const cashLockMessage = cashJurisdictionLockMessage(cashLocked, country, cashChrome, {
+    cashEnabled,
+    eligibility: eligibilityQuery.data,
+  });
 
   const enroll = useTournamentEnrollMutation(token);
   const checkout = useCheckoutMutation(token);
@@ -187,9 +209,6 @@ export function PaymentEnrollModal({
       (Boolean(country) && (walletQuery.isLoading || !balanceReady)));
   const canAfford = tournament.is_free || (balanceReady && balance != null && balance >= fee);
   const topUpValid = parsePositiveDecimal(topUpAmount) != null;
-  const cashLockMessage = countryBlocked
-    ? (cashChrome?.jurisdiction_blocked_error || cashChrome?.cash_disabled_error || "").trim()
-    : (cashChrome?.cash_disabled_error || "").trim();
 
   const onEnroll = () => {
     if (cashLocked) {

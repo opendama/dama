@@ -6,19 +6,33 @@ class GameNotify {
   GameNotify._();
 
   static AudioPlayer? _landPlayer;
+  static AudioPlayer? _landPlayerB;
+  static AudioPlayer? _gameStartPlayer;
   static AudioPlayer? _messagePlayer;
   static DateTime? _lastMessageAt;
   static DateTime? _lastLandAt;
   static bool _landConfigured = false;
+  static bool _useLandB = false;
+
+  static Future<AudioPlayer> _configureLowLatency(AudioPlayer player) async {
+    await player.setReleaseMode(ReleaseMode.stop);
+    await player.setPlayerMode(PlayerMode.lowLatency);
+    return player;
+  }
 
   static Future<AudioPlayer> _ensureLandPlayer() async {
-    final player = _landPlayer ??= AudioPlayer();
     if (!_landConfigured) {
-      await player.setReleaseMode(ReleaseMode.stop);
-      await player.setPlayerMode(PlayerMode.lowLatency);
+      _landPlayer = await _configureLowLatency(AudioPlayer());
+      _landPlayerB = await _configureLowLatency(AudioPlayer());
       _landConfigured = true;
     }
-    return player;
+    // Alternate players so seek/play never interrupts a still-audible land.
+    _useLandB = !_useLandB;
+    return (_useLandB ? _landPlayerB : _landPlayer)!;
+  }
+
+  static Future<AudioPlayer> _ensureGameStartPlayer() async {
+    return _gameStartPlayer ??= await _configureLowLatency(AudioPlayer());
   }
 
   /// Soft delivery chime for incoming chat (recipient only).
@@ -42,8 +56,8 @@ class GameNotify {
   static Future<void> playPieceLand(String kind) async {
     final now = DateTime.now();
     final last = _lastLandAt;
-    // Avoid clipping/dropout when multi-jump land events fire back-to-back.
-    if (last != null && now.difference(last).inMilliseconds < 40) return;
+    // Soft debounce only; dual players keep multi-jump lands audible.
+    if (last != null && now.difference(last).inMilliseconds < 18) return;
     _lastLandAt = now;
     final asset = switch (kind) {
       'capture' => 'sounds/capture.mp3',
@@ -52,8 +66,8 @@ class GameNotify {
     };
     try {
       final player = await _ensureLandPlayer();
-      // seek(0)+play is faster and clearer than stop()+play under load.
       await player.setVolume(kind == 'capture' ? 0.9 : 0.8);
+      await player.seek(Duration.zero);
       await player.play(AssetSource(asset));
       await HapticFeedback.selectionClick();
     } catch (_) {
@@ -92,8 +106,9 @@ class GameNotify {
       case 'game_start':
       case 'match_found':
         try {
-          final player = await _ensureLandPlayer();
+          final player = await _ensureGameStartPlayer();
           await player.setVolume(0.85);
+          await player.seek(Duration.zero);
           await player.play(AssetSource('sounds/game-start.mp3'));
           await HapticFeedback.mediumImpact();
         } catch (_) {
