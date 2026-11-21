@@ -5,6 +5,7 @@ import 'package:dama_mobile/core/cache/query_cache.dart';
 import 'package:dama_mobile/core/network/api_config.dart';
 import 'package:dama_mobile/core/supabase/supabase_init.dart';
 import 'package:dama_mobile/core/types/types.dart';
+import 'package:dama_mobile/features/app/app_shell_chrome_store.dart';
 import 'package:dama_mobile/features/auth/auth_providers.dart';
 import 'package:dama_mobile/features/auth/otp_session.dart';
 import 'package:equatable/equatable.dart';
@@ -130,11 +131,17 @@ class AuthCubit extends Cubit<AuthState> {
       }
       final params = chrome.oauthParamsByProvider[id]!;
       final auth = supabaseClient.auth;
-      final redirectTo = SupabaseConfig.oauthRedirectUrl.trim();
+      // OAuth redirect from DB app_shell_chrome only (mig 540). Must match native deep links.
+      final shell = await fetchAppShellChrome();
+      final redirectTo = (shell?.mobileOAuthRedirectUrl ?? '').trim();
+      if (shell == null || !shell.mobileOAuthReady || redirectTo.isEmpty) {
+        emit(state.copyWith(loading: false, error: _failMsg()));
+        return;
+      }
 
       final launched = await auth.signInWithOAuth(
         oauthProvider,
-        redirectTo: redirectTo.isEmpty ? null : redirectTo,
+        redirectTo: redirectTo,
         queryParams: {
           'access_type': params.accessType,
           'prompt': params.prompt,

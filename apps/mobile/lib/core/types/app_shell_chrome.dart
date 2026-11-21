@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart' show Color;
 
-/// DB-backed splash / onboarding / 404 chrome from GET /public/app-shell-chrome.
+/// DB-backed splash / onboarding / 404 / mobile packaging chrome from GET /public/app-shell-chrome.
 class AppShellChrome {
   const AppShellChrome({
     required this.source,
@@ -25,6 +25,12 @@ class AppShellChrome {
     required this.slide2Blurb,
     required this.slide3Title,
     required this.slide3Blurb,
+    required this.mobileAndroidApplicationId,
+    required this.mobileIosBundleId,
+    required this.mobileDisplayName,
+    required this.mobileOAuthScheme,
+    required this.mobileOAuthHost,
+    required this.mobileOAuthRedirectUrl,
   });
 
   final String source;
@@ -49,6 +55,18 @@ class AppShellChrome {
   final String slide2Blurb;
   final String slide3Title;
   final String slide3Blurb;
+  /// Must match native Android applicationId (mig 540).
+  final String mobileAndroidApplicationId;
+  /// Must match native iOS PRODUCT_BUNDLE_IDENTIFIER (mig 540).
+  final String mobileIosBundleId;
+  /// Must match native android:label / CFBundleDisplayName (mig 540).
+  final String mobileDisplayName;
+  /// Must match Android/iOS OAuth URL scheme (mig 540).
+  final String mobileOAuthScheme;
+  /// Must match Android/iOS OAuth URL host (mig 540).
+  final String mobileOAuthHost;
+  /// Full redirect URL for Supabase OAuth (mig 540). No client invent.
+  final String mobileOAuthRedirectUrl;
 
   bool get isReady =>
       source.trim().isNotEmpty &&
@@ -72,7 +90,24 @@ class AppShellChrome {
       slide2Title.trim().isNotEmpty &&
       slide2Blurb.trim().isNotEmpty &&
       slide3Title.trim().isNotEmpty &&
-      slide3Blurb.trim().isNotEmpty;
+      slide3Blurb.trim().isNotEmpty &&
+      mobileAndroidApplicationId.trim().isNotEmpty &&
+      mobileIosBundleId.trim().isNotEmpty &&
+      mobileDisplayName.trim().isNotEmpty &&
+      mobileOAuthScheme.trim().isNotEmpty &&
+      mobileOAuthHost.trim().isNotEmpty &&
+      mobileOAuthReady;
+
+  /// Native OAuth redirect from DB only (no dart-define invent).
+  bool get mobileOAuthReady {
+    final redirect = mobileOAuthRedirectUrl.trim();
+    final scheme = mobileOAuthScheme.trim();
+    final host = mobileOAuthHost.trim();
+    if (redirect.isEmpty || scheme.isEmpty || host.isEmpty) return false;
+    if (!redirect.contains('://')) return false;
+    final expectedPrefix = '$scheme://$host';
+    return redirect.startsWith(expectedPrefix);
+  }
 
   bool get splashUsesWhiteMark => splashLogoInk.trim().toLowerCase() == 'white';
 
@@ -123,6 +158,12 @@ class AppShellChrome {
       slide2Blurb: s('slide_2_blurb'),
       slide3Title: s('slide_3_title'),
       slide3Blurb: s('slide_3_blurb'),
+      mobileAndroidApplicationId: s('mobile_android_application_id'),
+      mobileIosBundleId: s('mobile_ios_bundle_id'),
+      mobileDisplayName: s('mobile_display_name'),
+      mobileOAuthScheme: s('mobile_oauth_scheme'),
+      mobileOAuthHost: s('mobile_oauth_host'),
+      mobileOAuthRedirectUrl: s('mobile_oauth_redirect_url'),
     );
   }
 }

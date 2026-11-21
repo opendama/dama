@@ -1,4 +1,4 @@
-package com.example.dama_mobile
+package com.opendama.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 

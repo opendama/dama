@@ -35,6 +35,17 @@ export type AppShellChrome = {
   robots_index?: string;
   admin_robots?: string;
   admin_not_found_home_href?: string;
+  mobile_android_application_id?: string;
+  mobile_ios_bundle_id?: string;
+  mobile_display_name?: string;
+  mobile_oauth_scheme?: string;
+  mobile_oauth_host?: string;
+  mobile_oauth_redirect_url?: string;
+  seo_locale?: string;
+  seo_og_type?: string;
+  seo_robots_allow?: string;
+  seo_robots_disallow?: string;
+  seo_sitemap?: string;
 };
 
 const REQUIRED = [
@@ -57,6 +68,11 @@ const REQUIRED = [
   "twitter_card",
   "robots_index",
   "brand_mark_alt",
+  "seo_locale",
+  "seo_og_type",
+  "seo_robots_allow",
+  "seo_robots_disallow",
+  "seo_sitemap",
 ] as const;
 
 export function isAppShellChromeReady(
@@ -93,4 +109,43 @@ export function parseRobotsIndex(raw: string): { index: boolean; follow: boolean
     index: parts.includes("index") && !parts.includes("noindex"),
     follow: parts.includes("follow") && !parts.includes("nofollow"),
   };
+}
+
+/** Split DB newline path lists (seo_robots_allow / seo_robots_disallow). */
+export function parseSeoPathList(raw: string): string[] {
+  return raw
+    .split(/\r?\n/)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+}
+
+export type SeoSitemapEntry = {
+  path: string;
+  changeFrequency: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+  priority: number;
+};
+
+const SITEMAP_FREQ = new Set(["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"]);
+
+/** Parse DB seo_sitemap lines: path|changefreq|priority */
+export function parseSeoSitemap(raw: string): SeoSitemapEntry[] {
+  const out: SeoSitemapEntry[] = [];
+  for (const line of parseSeoPathList(raw)) {
+    const parts = line.split("|").map((p) => p.trim());
+    if (parts.length !== 3) continue;
+    const path = parts[0];
+    const freq = parts[1];
+    const priRaw = parts[2];
+    if (!path || !freq || priRaw === undefined) continue;
+    if (!path.startsWith("/") || path.startsWith("//")) continue;
+    if (!SITEMAP_FREQ.has(freq)) continue;
+    const priority = Number(priRaw);
+    if (!Number.isFinite(priority) || priority < 0 || priority > 1) continue;
+    out.push({
+      path,
+      changeFrequency: freq as SeoSitemapEntry["changeFrequency"],
+      priority,
+    });
+  }
+  return out;
 }
