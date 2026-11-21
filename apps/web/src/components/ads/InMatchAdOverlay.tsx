@@ -102,7 +102,12 @@ export function InMatchAdOverlay({ active, gameStartedAtMs }: Props) {
   );
 
   runCheckRef.current = async () => {
-    if (!activeRef.current || gameStartedAtMsRef.current == null || openRef.current || checkingRef.current) {
+    if (
+      !activeRef.current ||
+      gameStartedAtMsRef.current == null ||
+      openRef.current ||
+      checkingRef.current
+    ) {
       return;
     }
     const pb = playbackRef.current;

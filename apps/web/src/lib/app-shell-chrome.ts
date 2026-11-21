@@ -125,15 +125,7 @@ export type SeoSitemapEntry = {
   priority: number;
 };
 
-const SITEMAP_FREQ = new Set([
-  "always",
-  "hourly",
-  "daily",
-  "weekly",
-  "monthly",
-  "yearly",
-  "never",
-]);
+const SITEMAP_FREQ = new Set(["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"]);
 
 /** Parse DB seo_sitemap lines: path|changefreq|priority */
 export function parseSeoSitemap(raw: string): SeoSitemapEntry[] {
@@ -141,7 +133,10 @@ export function parseSeoSitemap(raw: string): SeoSitemapEntry[] {
   for (const line of parseSeoPathList(raw)) {
     const parts = line.split("|").map((p) => p.trim());
     if (parts.length !== 3) continue;
-    const [path, freq, priRaw] = parts;
+    const path = parts[0];
+    const freq = parts[1];
+    const priRaw = parts[2];
+    if (!path || !freq || priRaw === undefined) continue;
     if (!path.startsWith("/") || path.startsWith("//")) continue;
     if (!SITEMAP_FREQ.has(freq)) continue;
     const priority = Number(priRaw);

@@ -1,8 +1,4 @@
-import {
-  isAppShellChromeReady,
-  loadAppShellChrome,
-  parseSeoSitemap,
-} from "@/lib/app-shell-chrome";
+import { isAppShellChromeReady, loadAppShellChrome, parseSeoSitemap } from "@/lib/app-shell-chrome";
 import { siteOrigin } from "@/lib/site-url";
 import type { MetadataRoute } from "next";
 
